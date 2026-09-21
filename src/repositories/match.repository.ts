@@ -1,0 +1,39 @@
+import mongoose from "mongoose";
+import { MatchModel } from "@/models/match";
+import { MatchParticipantModel } from "@/models/match-participant";
+
+type Session = mongoose.ClientSession;
+
+export const matchRepository = {
+  create(data: Record<string, unknown>, session?: Session) {
+    return MatchModel.create([data], { session }).then((docs) => docs[0]);
+  },
+  findById(id: string, session?: Session) {
+    return MatchModel.findById(id).session(session ?? null);
+  },
+  findByIdWithRoom(id: string) {
+    return MatchModel.findById(id).select("+roomId +roomPassword");
+  },
+  listOpen() {
+    return MatchModel.find({ status: "open" }).sort({ createdAt: -1 }).lean();
+  },
+  list(filter: Record<string, unknown>, limit = 80) {
+    return MatchModel.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
+  },
+  addParticipant(
+    data: {
+      matchId: string;
+      userId: string;
+      team: "A" | "B";
+      ign: string;
+      isCaptain: boolean;
+      lockAmount?: number;
+    },
+    session?: Session,
+  ) {
+    return MatchParticipantModel.create([data], { session }).then((docs) => docs[0]);
+  },
+  listParticipants(matchId: string) {
+    return MatchParticipantModel.find({ matchId }).lean();
+  },
+};

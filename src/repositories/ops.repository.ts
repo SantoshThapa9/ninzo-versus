@@ -1,0 +1,103 @@
+import { SupportTicketModel } from "@/models/support-ticket";
+import { SupportMessageModel } from "@/models/support-message";
+import { SupportEvidenceModel } from "@/models/support-evidence";
+import { DisputeModel } from "@/models/dispute";
+import { ResultSubmissionModel } from "@/models/result-submission";
+import { AuditLogModel } from "@/models/audit-log";
+import { AIConfigurationModel } from "@/models/ai-configuration";
+import type { ReportType, SupportStatus, TicketSender, EvidenceKind } from "@/types/enums";
+
+export const supportRepository = {
+  createTicket(data: {
+    userId: string;
+    category: ReportType;
+    summary: string;
+    matchId?: string;
+    freeFireUid?: string;
+    ign?: string;
+  }) {
+    return SupportTicketModel.create(data);
+  },
+  findTicket(id: string) {
+    return SupportTicketModel.findById(id);
+  },
+  listForUser(userId: string) {
+    return SupportTicketModel.find({ userId }).sort({ updatedAt: -1 }).lean();
+  },
+  listAdmin(status?: SupportStatus) {
+    return SupportTicketModel.find(status ? { status } : {})
+      .sort({ updatedAt: -1 })
+      .lean();
+  },
+  addMessage(data: { ticketId: string; sender: TicketSender; body: string; senderId?: string }) {
+    return SupportMessageModel.create(data);
+  },
+  listMessages(ticketId: string) {
+    return SupportMessageModel.find({ ticketId }).sort({ createdAt: 1 }).lean();
+  },
+  addEvidence(data: {
+    ticketId: string;
+    userId: string;
+    mediaUrl: string;
+    blobPathname: string;
+    mimeType: string;
+    kind: "image" | "video";
+    expiresAt?: Date;
+  }) {
+    return SupportEvidenceModel.create(data);
+  },
+};
+
+export const resultRepository = {
+  create(data: {
+    matchId: string;
+    userId: string;
+    kind: EvidenceKind;
+    mediaUrl: string;
+    blobPathname: string;
+    expiresAt?: Date;
+    aiAnalysis?: unknown;
+  }) {
+    return ResultSubmissionModel.create(data);
+  },
+  listForMatch(matchId: string) {
+    return ResultSubmissionModel.find({ matchId }).sort({ createdAt: -1 }).lean();
+  },
+};
+
+export const disputeRepository = {
+  create(data: Record<string, unknown>) {
+    return DisputeModel.create(data);
+  },
+  listOpen() {
+    return DisputeModel.find({ status: "open" }).sort({ createdAt: -1 }).lean();
+  },
+};
+
+export const auditRepository = {
+  write(data: {
+    actorId?: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    metadata?: unknown;
+  }) {
+    return AuditLogModel.create(data);
+  },
+  list(limit = 100) {
+    return AuditLogModel.find().sort({ createdAt: -1 }).limit(limit).lean();
+  },
+};
+
+export const settingsRepository = {
+  getGlobal() {
+    return AIConfigurationModel.findOne({ key: "global" });
+  },
+  upsertGlobal(data: Record<string, unknown>) {
+    return AIConfigurationModel.findOneAndUpdate(
+      { key: "global" },
+      { $set: data },
+      { new: true, upsert: true },
+    );
+  },
+};
