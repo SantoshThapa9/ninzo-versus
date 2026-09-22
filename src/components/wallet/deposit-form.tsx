@@ -78,7 +78,9 @@ export function DepositForm({ minCoins, coinsPerRupee, feePercent }: {
         />
       </div>
       <p className="text-sm text-[var(--muted)]">
-        You receive {coins} NV Coins. Processing fee {feePercent}% (₹{fee.toFixed(2)}). Pay ₹{total.toFixed(2)}.
+        {feePercent > 0
+          ? `You receive ${coins} NV Coins. Processing fee ${feePercent}% (₹${fee.toFixed(2)}). Pay ₹${total.toFixed(2)}.`
+          : `You receive ${coins} NV Coins. No deposit fee. Pay ₹${rupees.toFixed(2)}.`}
       </p>
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
       <Button type="button" size="full" onClick={pay}>

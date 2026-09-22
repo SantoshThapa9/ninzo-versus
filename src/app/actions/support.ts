@@ -16,6 +16,7 @@ export async function createTicketAction(_prev: { error?: string } | null, formD
       category: String(formData.get("category") ?? ReportType.MATCH_DISPUTE) as ReportType,
       summary: String(formData.get("summary") ?? ""),
       matchId: String(formData.get("matchId") ?? "") || undefined,
+      whatsappNumber: String(formData.get("whatsappNumber") ?? "") || undefined,
       freeFireUid: String(formData.get("freeFireUid") ?? "") || undefined,
       ign: String(formData.get("ign") ?? "") || undefined,
     });

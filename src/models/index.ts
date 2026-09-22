@@ -14,3 +14,4 @@ export { SupportMessageModel } from "@/models/support-message";
 export { SupportEvidenceModel } from "@/models/support-evidence";
 export { AIConfigurationModel } from "@/models/ai-configuration";
 export { AuditLogModel } from "@/models/audit-log";
+export { MatchChatMessageModel } from "@/models/match-chat-message";

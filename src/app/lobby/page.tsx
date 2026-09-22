@@ -26,7 +26,7 @@ export default async function LobbyPage() {
       <Card>
         <p className="text-xs uppercase tracking-[0.16em] text-[var(--accent-2)]">Wallet</p>
         <p className="mt-1 text-3xl font-extrabold">{user?.availableCoins ?? 0} NV</p>
-        <p className="text-sm text-[var(--muted)]">Locked {user?.lockedCoins ?? 0} • 10 NV = ₹1</p>
+        <p className="text-sm text-[var(--muted)]">Locked {user?.lockedCoins ?? 0} • ₹1 = 1 NV</p>
       </Card>
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Open Clash Squad</h1>
@@ -40,11 +40,15 @@ export default async function LobbyPage() {
         matches.map((match) => (
           <Link key={String(match._id)} href={`/clash/${String(match._id)}`}>
             <Card>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <Badge>{match.format}v{match.format}</Badge>
-                <span className="text-sm font-semibold">
-                  {match.stakeMin}–{match.stakeMax} NV
-                </span>
+                <span className="text-sm font-semibold">{match.stakeMin === match.stakeMax ? `${match.stakeMin} NV each` : `${match.stakeMin}–${match.stakeMax} NV`}</span>
+              </div>
+              <div className="mt-3 grid gap-1 text-sm text-[var(--muted)]">
+                <p>Posted by: {match.creatorIgn ?? "Unknown"}</p>
+                <p>Format: {match.format}v{match.format}</p>
+                <p>Headshot: {match.headshot ?? "No"}</p>
+                <p>Character Skill: {match.characterSkill ?? "No"}</p>
               </div>
               <p className="mt-2 text-sm text-[var(--muted)]">{match.rules}</p>
             </Card>

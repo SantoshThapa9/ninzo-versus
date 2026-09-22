@@ -1,8 +1,27 @@
 import { z } from "zod";
 
+function resolveRedisUrl() {
+  const configured = process.env.REDIS_URL;
+  if (configured) return configured;
+
+  const upstashUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.UPSTASH_REDIS_URL;
+  const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.UPSTASH_REDIS_TOKEN;
+  if (!upstashUrl || !upstashToken) return undefined;
+
+  try {
+    const parsed = new URL(upstashUrl);
+    const host = parsed.hostname;
+    return `rediss://default:${encodeURIComponent(upstashToken)}@${host}:6379`;
+  } catch {
+    return undefined;
+  }
+}
+
 const envSchema = z.object({
   MONGODB_URI: z.string().min(1).optional(),
   REDIS_URL: z.string().optional(),
+  UPSTASH_REDIS_REST_URL: z.string().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
   AUTH_SECRET: z.string().optional(),
   AUTH_URL: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
@@ -11,7 +30,8 @@ const envSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   CRON_SECRET: z.string().optional(),
-  ADMIN_BOOTSTRAP_EMAIL: z.string().email().optional(),
+  // Comma-separated allowlist of administrator email addresses.
+  ADMIN_BOOTSTRAP_EMAIL: z.string().optional(),
   NEXT_PUBLIC_RAZORPAY_KEY_ID: z.string().optional(),
   NEXT_PUBLIC_APP_NAME: z.string().optional(),
 });
@@ -21,7 +41,9 @@ export type AppEnv = z.infer<typeof envSchema>;
 export function getEnv(): AppEnv {
   return envSchema.parse({
     MONGODB_URI: process.env.MONGODB_URI,
-    REDIS_URL: process.env.REDIS_URL,
+    REDIS_URL: resolveRedisUrl(),
+    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
     AUTH_SECRET: process.env.AUTH_SECRET,
     AUTH_URL: process.env.AUTH_URL,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,

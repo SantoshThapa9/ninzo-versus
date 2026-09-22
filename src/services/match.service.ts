@@ -2,29 +2,34 @@ import { z } from "zod";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { applyPercent } from "@/lib/utils";
-import { CLASH_DEFAULTS } from "@/config/defaults";
+import {
+  CLASH_DEFAULTS,
+  ECONOMY_DEFAULTS,
+  MEDIA_DEFAULTS,
+} from "@/config/defaults";
 import { matchRepository } from "@/repositories/match.repository";
+import { MatchModel } from "@/models/match";
+import { MatchChatMessageModel } from "@/models/match-chat-message";
 import { playerProfileRepository } from "@/repositories/player-profile.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { applyLedger, getOrCreatePlatformUser } from "@/services/wallet.service";
 import { getPlatformSettings } from "@/services/settings.service";
+import { deletePrivateMedia } from "@/services/media.service";
 import { auditRepository, resultRepository } from "@/repositories/ops.repository";
 import { CoinTxnType, EvidenceKind, MatchStatus } from "@/types/enums";
-import { analyzeMatchScreenshot } from "@/services/ai.service";
+import { analyzeMatchScreenshot, validateMatchExtractions, type VisionResult } from "@/services/ai.service";
 
 const createMatchSchema = z.object({
   format: z.number().int().refine((n) => CLASH_DEFAULTS.teamSizes.includes(n as 1 | 2 | 3 | 4 | 5 | 6)),
-  stakeMin: z.number().int().positive(),
-  stakeMax: z.number().int().positive(),
+  stakeMin: z.number().int().min(ECONOMY_DEFAULTS.minMatchStakeCoins),
+  stakeMax: z.number().int().min(ECONOMY_DEFAULTS.minMatchStakeCoins),
   rules: z.string().min(4),
-  ign: z.string().min(2).max(20),
   warningAcknowledged: z.literal(true),
 });
 
 const acceptMatchSchema = z.object({
   matchId: z.string(),
-  stake: z.number().int().positive(),
-  ign: z.string().min(2).max(20),
+  stake: z.number().int().min(ECONOMY_DEFAULTS.minMatchStakeCoins),
   warningAcknowledged: z.literal(true),
 });
 
@@ -36,7 +41,18 @@ export async function createClashMatch(userId: string, raw: unknown) {
 
   await connectDb();
   const settings = await getPlatformSettings();
-  const profile = await playerProfileRepository.upsert(userId, input.ign);
+  const profile = await playerProfileRepository.findByUserId(userId);
+  if (!profile) throw new AppError("Save your In Game Name and Free Fire UID in your profile before posting a match.", "PROFILE_REQUIRED");
+
+  const duplicate = await MatchModel.findOne({
+    creatorId: userId,
+    status: MatchStatus.OPEN,
+    format: input.format,
+    stakeMin: input.stakeMin,
+    stakeMax: input.stakeMax,
+    rules: input.rules,
+  }).lean();
+  if (duplicate) return duplicate as typeof duplicate;
 
   return withTransaction(async (session) => {
     const user = await userRepository.findById(userId, session);
@@ -102,7 +118,8 @@ export async function createClashMatch(userId: string, raw: unknown) {
 export async function acceptClashMatch(userId: string, raw: unknown) {
   const input = acceptMatchSchema.parse(raw);
   await connectDb();
-  await playerProfileRepository.upsert(userId, input.ign);
+  const profile = await playerProfileRepository.findByUserId(userId);
+  if (!profile) throw new AppError("Save your In Game Name and Free Fire UID in your profile before accepting a match.", "PROFILE_REQUIRED");
 
   return withTransaction(async (session) => {
     const match = await matchRepository.findById(input.matchId, session);
@@ -112,8 +129,21 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
     if (String(match.creatorId) === userId) {
       throw new AppError("You cannot accept your own match.", "SELF_ACCEPT");
     }
+    if (match.opponentCaptainId && String(match.opponentCaptainId) !== userId) {
+      throw new AppError("This challenge already has an opponent.", "MATCH_ALREADY_ACCEPTED");
+    }
+    if (match.opponentCaptainId && String(match.opponentCaptainId) === userId) {
+      return match;
+    }
     if (input.stake < match.stakeMin || input.stake > match.stakeMax) {
       throw new AppError("Accepted stake must be inside the posted range.", "STAKE_OUT_OF_RANGE");
+    }
+    const user = await userRepository.findById(userId, session);
+    if (!user || user.status !== "active") {
+      throw new AppError("Account cannot accept matches.", "ACCOUNT_BLOCKED", 403);
+    }
+    if (user.availableCoins < input.stake) {
+      throw new AppError("Not enough NV Coins to lock this stake.", "INSUFFICIENT_FUNDS");
     }
 
     const refund = match.lockedStake - input.stake;
@@ -126,6 +156,7 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
     match.prizePool = prizePool;
     match.platformFeeAmount = platformFeeAmount;
     match.winnerPayout = winnerPayout;
+    match.chatExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     match.status = MatchStatus.ACCEPTED;
     await match.save({ session });
 
@@ -134,7 +165,7 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
         matchId: input.matchId,
         userId,
         team: "B",
-        ign: input.ign,
+        ign: profile.ign,
         isCaptain: true,
         lockAmount: input.stake,
       },
@@ -192,6 +223,48 @@ export async function setMatchLive(adminId: string, matchId: string, roomId: str
   return match;
 }
 
+function normalizeIgn(value?: string) {
+  return value?.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, "") ?? "";
+}
+
+function normalizeRoomId(value?: string) {
+  const normalized = value?.toLocaleUpperCase().replace(/[^A-Z0-9#]/g, "") ?? "";
+  if (/^\d{7}$/.test(normalized)) return normalized;
+  const hashIndex = normalized.indexOf("#");
+  if (hashIndex === -1) return "";
+  return normalized.slice(0, hashIndex).match(/\d{7}$/)?.[0] ?? "";
+}
+
+function normalizeWinnerIgn(value?: string) {
+  const ign = value?.trim();
+  if (!ign || ["WARBRINGERS", "HOWLERS"].includes(ign.toLocaleUpperCase())) return undefined;
+  return ign;
+}
+
+function fuzzyIgnMatches(left?: string, right?: string) {
+  const a = normalizeIgn(left);
+  const b = normalizeIgn(right);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+  const minLength = Math.min(a.length, b.length);
+  if (minLength <= 2) return false;
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (const char of a) {
+    const current = [previous[0] + 1];
+    for (let index = 1; index <= b.length; index += 1) {
+      const deleteCost = current[index - 1] + 1;
+      const insertCost = previous[index] + 1;
+      const replaceCost = previous[index - 1] + (char === b[index - 1] ? 0 : 1);
+      current[index] = Math.min(deleteCost, insertCost, replaceCost);
+    }
+    previous = current;
+  }
+  const distance = previous[b.length];
+  const maxLength = Math.max(a.length, b.length);
+  return maxLength > 0 && (maxLength - distance) / maxLength >= 0.7;
+}
+
 export async function submitMatchEvidence(
   userId: string,
   matchId: string,
@@ -202,12 +275,65 @@ export async function submitMatchEvidence(
   await connectDb();
   const match = await matchRepository.findById(matchId);
   if (!match) throw new AppError("Match not found.", "NOT_FOUND", 404);
-  const settings = await getPlatformSettings();
+  if (match.status !== MatchStatus.AWAITING_EVIDENCE) {
+    throw new AppError("Screenshots can be uploaded after both players mark the match complete.", "EVIDENCE_NOT_OPEN");
+  }
+  if (String(match.creatorId) !== userId && String(match.opponentCaptainId) !== userId) {
+    throw new AppError("Only match participants can upload screenshots.", "FORBIDDEN", 403);
+  }
+  if (kind !== EvidenceKind.POST_MATCH_RESULT) {
+    throw new AppError("Submit one match-result screenshot.", "INVALID_EVIDENCE");
+  }
+  const uploadedCount = await resultRepository.countForMatchUserKind(matchId, userId, kind);
+  if (uploadedCount >= 1) throw new AppError("You already submitted this screenshot type.", "EVIDENCE_LIMIT");
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + settings.mediaRetentionDays);
+  expiresAt.setDate(expiresAt.getDate() + MEDIA_DEFAULTS.tempRetentionDays);
 
-  const aiAnalysis =
-    kind === EvidenceKind.VIDEO ? undefined : await analyzeMatchScreenshot(mediaUrl);
+  // One Vision request per uploaded screenshot. There is intentionally no
+  // comparison request: payout verification below is deterministic backend code.
+  const platformIgn = (await playerProfileRepository.findByUserId(userId))?.ign;
+  const opponentId = String(match.creatorId) === userId ? String(match.opponentCaptainId) : String(match.creatorId);
+  const opponentIgn = opponentId ? (await playerProfileRepository.findByUserId(opponentId))?.ign : undefined;
+  let analysis: VisionResult = { confidence: 0 };
+  try {
+    analysis = (await analyzeMatchScreenshot(blobPathname, [platformIgn ?? "", opponentIgn ?? ""])) ?? analysis;
+  } catch {
+    console.error("[match-ai] Screenshot analysis failed.", { matchId, userId });
+  }
+  const normalizedRoomId = normalizeRoomId(analysis.roomId);
+  const normalizedAnalysis = {
+    ...analysis,
+    roomId: normalizedRoomId || undefined,
+    winnerIGN: normalizeWinnerIgn(analysis.winnerIGN),
+  };
+  console.info("[match-ai] Normalized room and winner extraction before persisting provisional result.", {
+    matchId,
+    userId,
+    normalizedRoomId,
+    winnerIGN: normalizedAnalysis.winnerIGN ?? null,
+    rawRoomId: analysis.roomId ?? null,
+    rawWinnerIGN: analysis.winnerIGN ?? null,
+  });
+  analysis = normalizedAnalysis;
+
+  if (!analysis.roomId || !analysis.winnerIGN) {
+    console.warn("[match-ai] Screenshot rejected: required result details are unreadable.", {
+      matchId,
+      userId,
+      hasRoomId: Boolean(analysis.roomId),
+      hasWinnerIgn: Boolean(analysis.winnerIGN),
+    });
+    try {
+      await deletePrivateMedia(blobPathname);
+    } catch {
+      console.error("[match-ai] Could not remove rejected screenshot upload.", { matchId, userId });
+    }
+    throw new AppError(
+      "We couldn't read the Custom Room ID or winner IGN. Please upload a clear final-result screenshot again.",
+      "SCREENSHOT_REUPLOAD_REQUIRED",
+      422,
+    );
+  }
 
   const submission = await resultRepository.create({
     matchId,
@@ -216,20 +342,164 @@ export async function submitMatchEvidence(
     mediaUrl,
     blobPathname,
     expiresAt,
-    aiAnalysis,
   });
+  await resultRepository.setAiAnalysis(String(submission._id), analysis);
+  console.info("[match-ai] Result screenshot extraction saved.", { matchId, userId });
 
-  if (match.status === MatchStatus.LIVE || match.status === MatchStatus.ACCEPTED) {
-    match.status = MatchStatus.AWAITING_EVIDENCE;
-    await match.save();
+  const personalResult = analysis.winnerIGN
+    ? fuzzyIgnMatches(analysis.winnerIGN, platformIgn)
+      ? "win" as const
+      : opponentIgn && fuzzyIgnMatches(analysis.winnerIGN, opponentIgn)
+        ? "loss" as const
+        : undefined
+    : undefined;
+
+  await MatchModel.findByIdAndUpdate(matchId, {
+    $set: {
+      provisionalResult: personalResult ? (personalResult === "win" ? "WIN" : "LOSS") : null,
+    },
+  });
+  await finalizeMatchEvidence(matchId);
+  return { submission, personalResult };
+}
+
+// Safe to call repeatedly (including while the chat refreshes). Only one
+// request can claim the match for finalization.
+export async function finalizeMatchEvidence(matchId: string) {
+  const evidence = await resultRepository.listForMatch(matchId);
+  const resultEvidence = evidence.filter((item) => item.kind === EvidenceKind.POST_MATCH_RESULT);
+  const resultUploaders = new Set(resultEvidence.map((item) => String(item.userId)));
+  // Start finalization only after one result image exists for each captain.
+  // This deliberately ignores old/legacy evidence attached to the match.
+  if (resultEvidence.length >= 2 && resultUploaders.size === 2) {
+    if (resultEvidence.some((item) => !item.aiAnalysis)) {
+      console.info("[match-ai] Waiting for both single-image extractions before verification.", { matchId });
+      return;
+    }
+    console.info("[match-ai] Both player screenshots found; claiming match for final analysis.", { matchId });
+    const claimed = await MatchModel.findOneAndUpdate(
+      { _id: matchId, status: { $in: [MatchStatus.AWAITING_EVIDENCE, MatchStatus.ANALYZING] }, aiAnalysisStartedAt: { $exists: false } },
+      { $set: { aiAnalysisStartedAt: new Date(), status: MatchStatus.ANALYZING } },
+      { returnDocument: "after" },
+    );
+    if (claimed) {
+      const creatorEvidence = resultEvidence.find((item) => String(item.userId) === String(claimed.creatorId));
+      const opponentEvidence = resultEvidence.find((item) => String(item.userId) === String(claimed.opponentCaptainId));
+      if (!creatorEvidence || !opponentEvidence) return;
+      const creatorResult = { ...(creatorEvidence.aiAnalysis ?? {}) } as VisionResult;
+      const opponentResult = { ...(opponentEvidence.aiAnalysis ?? {}) } as VisionResult;
+      const normalizedCreatorRoomId = normalizeRoomId(creatorResult.roomId);
+      const normalizedOpponentRoomId = normalizeRoomId(opponentResult.roomId);
+      creatorResult.roomId = normalizedCreatorRoomId || creatorResult.roomId;
+      opponentResult.roomId = normalizedOpponentRoomId || opponentResult.roomId;
+      console.info("[match-ai] Normalized room IDs for verification.", {
+        matchId,
+        creator: { normalizedRoomId: normalizedCreatorRoomId ?? null, rawRoomId: creatorEvidence.aiAnalysis?.roomId ?? null },
+        opponent: { normalizedRoomId: normalizedOpponentRoomId ?? null, rawRoomId: opponentEvidence.aiAnalysis?.roomId ?? null },
+      });
+      const sameName = (left?: string, right?: string) => fuzzyIgnMatches(left, right);
+      const sameRoom = (left?: string, right?: string) => {
+        const a = normalizeRoomId(left);
+        const b = normalizeRoomId(right);
+        return Boolean(a && b && a === b);
+      };
+      const complete = (result?: VisionResult) => Boolean(
+        result && (result.confidence ?? 0) >= 0.8 && normalizeRoomId(result.roomId) && result.winnerIGN?.trim(),
+      );
+      const participants = await matchRepository.listParticipants(matchId);
+      const creatorIgn = participants.find((player) => String(player.userId) === String(claimed.creatorId))?.ign;
+      const opponentIgn = participants.find((player) => String(player.userId) === String(claimed.opponentCaptainId))?.ign;
+      const validation = creatorResult && opponentResult ? await validateMatchExtractions({
+        first: creatorResult,
+        second: opponentResult,
+        players: [creatorIgn ?? "", opponentIgn ?? ""],
+        question: "Do both screenshots match the same final result and winner? The extracted roomId must be the same at the bottom-left, and the winnerIGN must match the same player name in both images. If the winner is not the same in both screenshots, return valid=false.",
+        winnerUserId: creatorIgn ?? opponentIgn ?? "",
+      }) : undefined;
+      const common = complete(creatorResult) && complete(opponentResult) && sameRoom(creatorResult?.roomId, opponentResult?.roomId) && sameName(creatorResult?.winnerIGN, opponentResult?.winnerIGN) && validation?.valid;
+      const creatorWon = common && fuzzyIgnMatches(creatorResult?.winnerIGN, creatorIgn);
+      const opponentWon = common && fuzzyIgnMatches(creatorResult?.winnerIGN, opponentIgn);
+      const winnerTeam = creatorWon ? "A" : opponentWon ? "B" : undefined;
+      console.info("[match-ai] Final verification inputs and checks.", {
+        matchId,
+        creator: { roomId: creatorResult?.roomId, winnerIGN: creatorResult?.winnerIGN },
+        opponent: { roomId: opponentResult?.roomId, winnerIGN: opponentResult?.winnerIGN },
+        platformPlayers: { creatorIgn, opponentIgn },
+        checks: { sameRoom: sameRoom(creatorResult?.roomId, opponentResult?.roomId), sameWinner: sameName(creatorResult?.winnerIGN, opponentResult?.winnerIGN), validatorValid: validation?.valid ?? false, creatorWon, opponentWon },
+      });
+      if (winnerTeam) {
+        claimed.aiWinnerRecommendation = `Team ${winnerTeam}`;
+        claimed.aiAnalysis = { individual: [creatorResult, opponentResult], final: validation, verification: "matched" };
+        claimed.provisionalResult = creatorWon ? "WIN" : "LOSS";
+        await claimed.save();
+        console.info("[match-ai] Results agree; automatically settling the match.", { matchId, winnerTeam });
+        await adminSettleMatch(undefined, matchId, winnerTeam);
+      } else {
+        claimed.aiWinnerRecommendation = "held for admin review";
+        claimed.aiAnalysis = { individual: [creatorResult, opponentResult], final: validation, verification: "conflicting or invalid room/winner evidence" };
+        claimed.provisionalResult = "HOLD";
+        claimed.status = MatchStatus.DISPUTED;
+        claimed.completedAt = new Date();
+        await claimed.save();
+        console.warn("[match-ai] Results are unclear or conflicting; match placed on admin hold.", { matchId });
+      }
+    } else {
+      console.info("[match-ai] Match analysis was already claimed by another request.", { matchId });
+    }
+  } else {
+    console.info("[match-ai] Waiting for one result screenshot from each player.", { matchId, screenshotCount: resultEvidence.length, playerCount: resultUploaders.size });
   }
-  return submission;
+}
+
+export async function confirmMatchCompleted(userId: string, matchId: string) {
+  await connectDb();
+  const match = await matchRepository.findById(matchId);
+  if (!match || !match.opponentCaptainId) throw new AppError("Match is not ready for completion.", "MATCH_NOT_READY");
+  if (String(match.creatorId) !== userId && String(match.opponentCaptainId) !== userId) {
+    throw new AppError("Only match participants can confirm completion.", "FORBIDDEN", 403);
+  }
+  if (match.status !== MatchStatus.ACCEPTED && match.status !== MatchStatus.LIVE) {
+    throw new AppError("This match cannot be marked complete now.", "INVALID_STATUS");
+  }
+  const completionTime = new Date();
+  const updated = await MatchModel.findOneAndUpdate(
+    { _id: matchId, status: { $in: [MatchStatus.ACCEPTED, MatchStatus.LIVE] } },
+    // One captain ending the match closes the shared chat immediately. Both
+    // captains can then submit their two screenshots in the evidence view.
+    { $addToSet: { completedBy: userId }, $set: { status: MatchStatus.AWAITING_EVIDENCE, completedAt: completionTime } },
+    { returnDocument: "after" },
+  );
+  if (!updated) throw new AppError("Match not found.", "NOT_FOUND", 404);
+  await MatchChatMessageModel.updateMany(
+    { matchId },
+    { $max: { expiresAt: new Date(completionTime.getTime() + 3 * 24 * 60 * 60 * 1000) } },
+  );
+  return updated;
+}
+
+export async function undoMatchCompleted(userId: string, matchId: string) {
+  await connectDb();
+  const match = await matchRepository.findById(matchId);
+  if (!match || !match.opponentCaptainId) throw new AppError("Match is not ready for completion.", "MATCH_NOT_READY");
+  if (String(match.creatorId) !== userId && String(match.opponentCaptainId) !== userId) {
+    throw new AppError("Only match participants can restart chat.", "FORBIDDEN", 403);
+  }
+  if (match.status !== MatchStatus.ACCEPTED && match.status !== MatchStatus.LIVE) {
+    throw new AppError("Chat cannot be restarted after both players confirmed completion.", "CHAT_RESTART_UNAVAILABLE");
+  }
+  const updated = await MatchModel.findOneAndUpdate(
+    { _id: matchId, status: { $in: [MatchStatus.ACCEPTED, MatchStatus.LIVE] } },
+    { $pull: { completedBy: userId } },
+    { returnDocument: "after" },
+  );
+  if (!updated) throw new AppError("Match not found.", "NOT_FOUND", 404);
+  return updated;
 }
 
 export async function adminSettleMatch(
-  adminId: string,
+  adminId: string | undefined,
   matchId: string,
-  winnerTeam: "A" | "B",
+  winnerTeam: "A" | "B" | "DRAW",
 ) {
   await connectDb();
   return withTransaction(async (session) => {
@@ -242,19 +512,29 @@ export async function adminSettleMatch(
       throw new AppError("Match is not ready to settle.", "NOT_READY");
     }
 
-    const winnerId =
-      winnerTeam === "A" ? String(match.creatorId) : String(match.opponentCaptainId);
-    const loserId =
-      winnerTeam === "A" ? String(match.opponentCaptainId) : String(match.creatorId);
+    const participantIds = [String(match.creatorId), String(match.opponentCaptainId)];
+    const winnerId = winnerTeam === "A" ? participantIds[0] : winnerTeam === "B" ? participantIds[1] : undefined;
     const platform = await getOrCreatePlatformUser(session);
     const stake = match.acceptedStake;
+    // The fee is taken from the combined pool: 10 NV + 10 NV = 20 NV pool;
+    // at 5%, the winner receives 19 NV.
+    const prizePool = stake * 2;
+    const platformFeeAmount = applyPercent(prizePool, match.platformFeePercent);
+    const winnerPayout = prizePool - platformFeeAmount;
+    // A draw returns the remaining pool equally after the platform fee. If a
+    // fee cannot be divided evenly, the first captain receives the extra NV.
+    const drawPayouts = [
+      Math.ceil(winnerPayout / 2),
+      Math.floor(winnerPayout / 2),
+    ];
 
-    for (const uid of [winnerId, loserId]) {
+    for (const [index, uid] of participantIds.entries()) {
+      const drawPayout = winnerId ? 0 : drawPayouts[index];
       await applyLedger({
         userId: uid,
         type: CoinTxnType.STAKE_SETTLE,
-        amount: 0,
-        availableDelta: 0,
+        amount: drawPayout,
+        availableDelta: drawPayout,
         lockedDelta: -stake,
         referenceType: "Match",
         referenceId: matchId,
@@ -263,40 +543,58 @@ export async function adminSettleMatch(
       });
     }
 
-    await applyLedger({
-      userId: winnerId,
-      type: CoinTxnType.PRIZE_PAYOUT,
-      amount: match.winnerPayout,
-      availableDelta: match.winnerPayout,
-      lockedDelta: 0,
-      referenceType: "Match",
-      referenceId: matchId,
-      idempotencyKey: `prize:${matchId}:${winnerId}`,
-      session,
-    });
+    if (winnerId) {
+      await applyLedger({
+        userId: winnerId,
+        type: CoinTxnType.PRIZE_PAYOUT,
+        amount: winnerPayout,
+        availableDelta: winnerPayout,
+        lockedDelta: 0,
+        referenceType: "Match",
+        referenceId: matchId,
+        idempotencyKey: `prize:${matchId}:${winnerId}`,
+        session,
+      });
+
+    }
 
     await applyLedger({
       userId: String(platform._id),
       type: CoinTxnType.PLATFORM_FEE,
-      amount: match.platformFeeAmount,
-      availableDelta: match.platformFeeAmount,
+      amount: platformFeeAmount,
+      availableDelta: platformFeeAmount,
       lockedDelta: 0,
       referenceType: "Match",
       referenceId: matchId,
       idempotencyKey: `fee:${matchId}`,
+      metadata: winnerId ? { resolution: "winner" } : { resolution: "draw", payouts: drawPayouts },
       session,
     });
 
-    match.winnerTeam = winnerTeam;
+    match.winnerTeam = winnerTeam === "DRAW" ? null : winnerTeam;
+    match.prizePool = prizePool;
+    match.platformFeeAmount = platformFeeAmount;
+    match.winnerPayout = winnerId ? winnerPayout : 0;
     match.status = MatchStatus.SETTLED;
+    match.completedAt = new Date();
     await match.save({ session });
+    await MatchChatMessageModel.updateMany(
+      { matchId },
+      { $max: { expiresAt: new Date(match.completedAt.getTime() + 3 * 24 * 60 * 60 * 1000) } },
+    );
 
     await auditRepository.write({
       actorId: adminId,
-      action: "match.settle",
+      action: adminId ? "match.settle" : "match.ai_settle",
       entityType: "Match",
       entityId: matchId,
-      metadata: { winnerTeam, winnerId },
+      metadata: {
+        winnerTeam,
+        winnerId: winnerId ?? null,
+        resolution: winnerId ? "winner" : "draw",
+        drawPayouts: winnerId ? undefined : drawPayouts,
+        platformFeeAmount,
+      },
     });
     return match;
   });
@@ -304,7 +602,123 @@ export async function adminSettleMatch(
 
 export async function listOpenMatches() {
   await connectDb();
-  return matchRepository.listOpen();
+  const matches = await matchRepository.listOpen();
+  return matches.map((match) => {
+    const rules = String(match.rules ?? "");
+    const headshot = /only headshots:\s*yes/i.test(rules) ? "Yes" : "No";
+    const characterSkill = /character skill allowed:\s*yes/i.test(rules) ? "Yes" : "No";
+    return {
+      ...match,
+      creatorIgn: match.creatorIgn,
+      headshot,
+      characterSkill,
+    };
+  });
+}
+
+export async function listActiveMatchesForUser(userId: string) {
+  await connectDb();
+  const matches = await matchRepository.listActiveForUser(userId);
+  const participants = await Promise.all(
+    matches.map(async (match) => ({
+      match,
+      participants: await matchRepository.listParticipants(String(match._id)),
+    })),
+  );
+  return participants.map(({ match, participants: players }) => {
+    const creator = players.find((player) => String(player.userId) === String(match.creatorId));
+    const opponent = players.find((player) => String(player.userId) === String(match.opponentCaptainId));
+    const creatorIgn = creator?.ign ?? match.creatorIgn ?? "Player A";
+    const opponentIgn = opponent?.ign ?? "Player B";
+    return {
+      ...JSON.parse(JSON.stringify(match)),
+      creatorIgn,
+      opponentIgn,
+      winnerIgn: match.winnerTeam === "A" ? creatorIgn : match.winnerTeam === "B" ? opponentIgn : null,
+    };
+  });
+}
+
+export async function pruneExpiredMatchHistory(userId?: string) {
+  await connectDb();
+  const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  const matches = await MatchModel.find({
+    ...(userId ? { $or: [{ creatorId: userId }, { opponentCaptainId: userId }] } : {}),
+    completedAt: { $lt: cutoff },
+    status: { $in: [MatchStatus.SETTLED, MatchStatus.CANCELLED] },
+  }).lean();
+
+  for (const match of matches) {
+    await MatchChatMessageModel.deleteMany({ matchId: match._id });
+    await resultRepository.deleteManyForMatch(String(match._id));
+    await MatchModel.deleteOne({ _id: match._id });
+  }
+}
+
+export async function listPreviousMatchesForUser(userId: string) {
+  await connectDb();
+  await pruneExpiredMatchHistory(userId);
+  const matches = await matchRepository.listPreviousForUser(userId);
+  const participants = await Promise.all(
+    matches.map(async (match) => ({
+      match,
+      participants: await matchRepository.listParticipants(String(match._id)),
+    })),
+  );
+  return participants.map(({ match, participants: players }) => {
+    const creator = players.find((player) => String(player.userId) === String(match.creatorId));
+    const opponent = players.find((player) => String(player.userId) === String(match.opponentCaptainId));
+    const creatorIgn = creator?.ign ?? match.creatorIgn ?? "Player A";
+    const opponentIgn = opponent?.ign ?? "Player B";
+    return {
+      ...JSON.parse(JSON.stringify(match)),
+      creatorIgn,
+      opponentIgn,
+      winnerIgn: match.winnerTeam === "A" ? creatorIgn : match.winnerTeam === "B" ? opponentIgn : null,
+    };
+  });
+}
+
+export async function listMatchesForUser(
+  userId: string,
+  filter: "open" | "completed" | "on_hold" | "disqualified" = "open",
+) {
+  await connectDb();
+  await pruneExpiredMatchHistory(userId);
+  const statusMap = {
+    open: [MatchStatus.OPEN, MatchStatus.ACCEPTED, MatchStatus.LIVE, MatchStatus.AWAITING_EVIDENCE, MatchStatus.ANALYZING, MatchStatus.RESULT_REVIEW],
+    completed: [MatchStatus.SETTLED],
+    on_hold: [MatchStatus.DISPUTED],
+    disqualified: [MatchStatus.CANCELLED],
+  } as const;
+
+  const matches = await MatchModel.find({
+    $or: [{ creatorId: userId }, { opponentCaptainId: userId }],
+    status: { $in: statusMap[filter] },
+  }).sort({ updatedAt: -1 }).lean();
+
+  const participants = await Promise.all(
+    matches.map(async (match) => ({
+      match,
+      participants: await matchRepository.listParticipants(String(match._id)),
+    })),
+  );
+
+  return participants.map(({ match, participants: players }) => {
+    // These names describe the two fixed sides of the match, rather than the
+    // viewer and their opponent. Using a viewer-relative "opponent" here made
+    // the acceptor see the creator in both positions (Creator vs Creator).
+    const creator = players.find((player) => String(player.userId) === String(match.creatorId));
+    const opponent = players.find((player) => String(player.userId) === String(match.opponentCaptainId));
+    const creatorIgn = creator?.ign ?? match.creatorIgn ?? "Player A";
+    const opponentIgn = opponent?.ign ?? "Player B";
+    return {
+      ...JSON.parse(JSON.stringify(match)),
+      creatorIgn,
+      opponentIgn,
+      winnerIgn: match.winnerTeam === "A" ? creatorIgn : match.winnerTeam === "B" ? opponentIgn : null,
+    };
+  });
 }
 
 export async function getMatchForUser(userId: string, matchId: string, isAdmin: boolean) {
@@ -314,11 +728,27 @@ export async function getMatchForUser(userId: string, matchId: string, isAdmin: 
     : await matchRepository.findById(matchId);
   if (!match) throw new AppError("Match not found.", "NOT_FOUND", 404);
   const participants = await matchRepository.listParticipants(matchId);
+  const profiles = await Promise.all(
+    participants.map(async (participant) => ({
+      userId: String(participant.userId),
+      profile: await playerProfileRepository.findByUserId(String(participant.userId)),
+    })),
+  );
+  const profileByUserId = new Map(profiles.map(({ userId, profile }) => [userId, profile]));
   const evidence = await resultRepository.listForMatch(matchId);
   const isParticipant = participants.some((p) => String(p.userId) === userId);
   return {
     match: JSON.parse(JSON.stringify(match)),
     participants,
+    players: participants.map((participant) => ({
+      userId: String(participant.userId),
+      // Active matches use the current MongoDB profile. Settled/cancelled
+      // matches retain the participant snapshot for an accurate history.
+      ign: match.status === MatchStatus.SETTLED || match.status === MatchStatus.CANCELLED
+        ? participant.ign
+        : profileByUserId.get(String(participant.userId))?.ign ?? participant.ign,
+      uid: profileByUserId.get(String(participant.userId))?.uid ?? "UID not set",
+    })),
     evidence: isParticipant || isAdmin ? evidence : [],
     settings: await getPlatformSettings(),
   };

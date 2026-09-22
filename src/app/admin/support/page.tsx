@@ -21,7 +21,7 @@ export default async function AdminSupportPage() {
       {tickets.map((ticket) => (
         <Card key={String(ticket._id)}>
           <div className="flex items-center justify-between">
-            <Link href={`/support/${String(ticket._id)}`} className="font-bold">
+            <Link href={`/admin/support/${String(ticket._id)}`} className="font-bold">
               {ticket.summary}
             </Link>
             <Badge>{ticket.status}</Badge>

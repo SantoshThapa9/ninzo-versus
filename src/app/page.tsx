@@ -9,8 +9,8 @@ export default function Home() {
       <p className={styles.kicker}>India • Clash Squad • Hosted Cups</p>
       <h1 className={styles.title}>Play. Prove. Get paid in NV Coins.</h1>
       <p className={styles.lead}>
-        10 NV Coin = ₹1. Dynamic P2P stakes, admin-hosted events, AI-assisted proof, and
-        human-final decisions.
+        ₹1 = 1 NV Coin. Dynamic P2P stakes, admin-hosted events, AI-assisted
+        proof, and human-final decisions.
       </p>
       <div className={styles.actions}>
         <Button asChild size="full">
@@ -24,13 +24,15 @@ export default function Home() {
         <Card>
           <h2 className="mb-2 text-base font-bold">User Clash Squad</h2>
           <p className="text-sm text-[var(--muted)]">
-            1v1 to 6v6. Post a stake range, lock the max, accept inside the range, refund the rest.
+            1v1 to 6v6. Post a stake range, lock the max, accept inside the
+            range, refund the rest.
           </p>
         </Card>
         <Card>
           <h2 className="mb-2 text-base font-bold">Hosted nights</h2>
           <p className="text-sm text-[var(--muted)]">
-            Admin publishes only when tonight is on. No draft event can take payments or slots.
+            Admin publishes only when tonight is on. No draft event can take
+            payments or slots.
           </p>
         </Card>
       </div>

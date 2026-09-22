@@ -11,6 +11,7 @@ const createSchema = z.object({
   category: z.enum(reportTypes),
   summary: z.string().min(8),
   matchId: z.string().optional(),
+  whatsappNumber: z.string().min(6).optional(),
   freeFireUid: z.string().optional(),
   ign: z.string().optional(),
 });
@@ -27,11 +28,9 @@ export async function openTicket(userId: string, raw: unknown) {
   });
 
   const missing: string[] = [];
-  if (!input.matchId && (input.category === ReportType.MATCH_DISPUTE || input.category === ReportType.CHEATING)) {
-    missing.push("Match ID");
-  }
+  if (!input.whatsappNumber) missing.push("WhatsApp number");
   if (!input.freeFireUid) missing.push("Free Fire UID");
-  if (!input.ign) missing.push("IGN");
+  if (!input.ign) missing.push("In Game Name");
   missing.push("Screenshots");
   missing.push("Video (recommended)");
 

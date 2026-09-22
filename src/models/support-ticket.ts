@@ -9,6 +9,7 @@ const SupportTicketSchema = new Schema(
     matchId: { type: String, trim: true },
     freeFireUid: { type: String, trim: true },
     ign: { type: String, trim: true },
+    whatsappNumber: { type: String, trim: true },
     summary: { type: String, required: true },
   },
   { timestamps: true },

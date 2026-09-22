@@ -17,6 +17,24 @@ export const matchRepository = {
   listOpen() {
     return MatchModel.find({ status: "open" }).sort({ createdAt: -1 }).lean();
   },
+  listActiveForUser(userId: string) {
+    return MatchModel.find({
+      $or: [{ creatorId: userId }, { opponentCaptainId: userId }],
+      status: { $in: ["accepted", "live", "awaiting_evidence", "analyzing", "result_review", "disputed"] },
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+  },
+  listPreviousForUser(userId: string) {
+    const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    return MatchModel.find({
+      $or: [{ creatorId: userId }, { opponentCaptainId: userId }],
+      status: { $in: ["settled", "disputed"] },
+      completedAt: { $gte: cutoff },
+    })
+      .sort({ completedAt: -1, createdAt: -1 })
+      .lean();
+  },
   list(filter: Record<string, unknown>, limit = 80) {
     return MatchModel.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
   },

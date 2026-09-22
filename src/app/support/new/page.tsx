@@ -11,7 +11,7 @@ export default function NewTicketPage() {
     <Card>
       <h1 className="mb-3 text-2xl font-bold">Report an issue</h1>
       <p className="mb-4 text-sm text-[var(--muted)]">
-        AI helps first. Share Match ID, UID, IGN, screenshots, and a video when you can.
+        AI helps first. Share your WhatsApp number, UID, In Game Name, screenshots, and a video when you can.
       </p>
       <ActionForm action={createTicketAction} submitLabel="Start support">
         <div>
@@ -25,15 +25,15 @@ export default function NewTicketPage() {
           </select>
         </div>
         <div>
-          <Label htmlFor="matchId">Match ID</Label>
-          <Input id="matchId" name="matchId" />
+          <Label htmlFor="whatsappNumber">WhatsApp number</Label>
+          <Input id="whatsappNumber" name="whatsappNumber" placeholder="+91 98765 43210" required />
         </div>
         <div>
           <Label htmlFor="freeFireUid">Free Fire UID</Label>
           <Input id="freeFireUid" name="freeFireUid" />
         </div>
         <div>
-          <Label htmlFor="ign">IGN</Label>
+          <Label htmlFor="ign">In Game Name</Label>
           <Input id="ign" name="ign" />
         </div>
         <div>

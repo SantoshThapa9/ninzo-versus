@@ -6,9 +6,8 @@ import { toErrorMessage } from "@/lib/errors";
 import { rateLimit } from "@/lib/rate-limit";
 import { createDepositOrder } from "@/services/payment.service";
 import { requestWithdrawal, reviewWithdrawal } from "@/services/withdrawal.service";
-import { playerProfileRepository } from "@/repositories/player-profile.repository";
-import { connectDb } from "@/lib/db/mongoose";
 import { updatePlatformSettings } from "@/services/settings.service";
+import { savePlayerIdentity } from "@/services/player-profile.service";
 
 export async function createDepositAction(coins: number) {
   const session = await requireSession();
@@ -43,15 +42,21 @@ export async function reviewWithdrawalAction(formData: FormData) {
   revalidatePath("/admin/withdrawals");
 }
 
-export async function saveProfileAction(formData: FormData) {
-  const session = await requireSession();
-  await connectDb();
-  await playerProfileRepository.upsert(
-    session.user.id,
-    String(formData.get("ign") ?? ""),
-    String(formData.get("uid") ?? ""),
-  );
-  revalidatePath("/profile");
+export async function saveProfileAction(_prev: { error?: string; ok?: boolean } | null, formData: FormData) {
+  try {
+    const session = await requireSession();
+    await savePlayerIdentity(session.user.id, {
+      ign: String(formData.get("ign") ?? ""),
+      uid: String(formData.get("uid") ?? ""),
+    });
+    revalidatePath("/profile");
+    revalidatePath("/lobby");
+    revalidatePath("/challenges");
+    revalidatePath("/events");
+    return { ok: true };
+  } catch (error) {
+    return { error: toErrorMessage(error) };
+  }
 }
 
 export async function saveSettingsAction(formData: FormData) {

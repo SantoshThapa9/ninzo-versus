@@ -47,11 +47,11 @@ export default async function EventDetailPage({ params }: PageProps<"/events/[id
       </Card>
       {canPay ? (
         <Card>
-          <h2 className="mb-3 font-bold">Register • {ignCount} IGN{ignCount > 1 ? "s" : ""}</h2>
+          <h2 className="mb-3 font-bold">Register • {ignCount} In Game Name{ignCount > 1 ? "s" : ""}</h2>
           <ActionForm action={registerEventAction} submitLabel="Validate, pay, confirm slot">
             <input type="hidden" name="eventId" value={id} />
             <div>
-              <Label htmlFor="igns">IGNs (comma separated)</Label>
+              <Label htmlFor="igns">In Game Names (comma separated)</Label>
               <Input id="igns" name="igns" placeholder="Name1, Name2" required />
             </div>
           </ActionForm>

@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { registerAction } from "@/app/actions/auth";
 import { Card } from "@/components/ui/card";
+import GoogleSignInButton from "../../components/auth/google-signin-button";
 import Link from "next/link";
 
 export default function RegisterPage() {
@@ -23,6 +24,15 @@ export default function RegisterPage() {
           <Input id="password" name="password" type="password" minLength={8} required />
         </div>
       </ActionForm>
+
+      <div className="my-4 flex items-center gap-3">
+        <div className="h-px flex-1 bg-white/10" />
+        <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">or</span>
+        <div className="h-px flex-1 bg-white/10" />
+      </div>
+
+      <GoogleSignInButton label="Sign up with Google" />
+
       <p className="mt-4 text-sm text-[var(--muted)]">
         Already playing? <Link href="/login">Sign in</Link>
       </p>

@@ -29,7 +29,7 @@ export const userRepository = {
     return UserModel.create([data], { session }).then((docs) => docs[0]);
   },
   updateById(id: string, update: Record<string, unknown>, session?: Session) {
-    return UserModel.findByIdAndUpdate(id, update, { new: true, session });
+    return UserModel.findByIdAndUpdate(id, update, { returnDocument: "after", session });
   },
   list(filter: Record<string, unknown> = {}, limit = 50) {
     return UserModel.find(filter).sort({ createdAt: -1 }).limit(limit).lean();

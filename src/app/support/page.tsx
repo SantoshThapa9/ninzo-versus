@@ -6,6 +6,7 @@ import { supportRepository } from "@/repositories/ops.repository";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SupportChatbot } from "@/components/support/support-chatbot";
 
 export default async function SupportPage() {
   const session = await auth();
@@ -17,20 +18,31 @@ export default async function SupportPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Support</h1>
         <Button asChild size="sm">
-          <Link href="/support/new">New ticket</Link>
+          <Link href="/support/new">Report an issue</Link>
         </Button>
       </div>
-      {tickets.map((ticket) => (
-        <Link key={String(ticket._id)} href={`/support/${String(ticket._id)}`}>
+
+      <SupportChatbot />
+
+      <div>
+        <h2 className="mb-2 text-lg font-bold">Recent tickets</h2>
+        {tickets.length === 0 ? (
           <Card>
-            <div className="flex items-center justify-between">
-              <p className="font-semibold">{ticket.summary}</p>
-              <Badge>{ticket.status}</Badge>
-            </div>
-            <p className="mt-1 text-xs text-[var(--muted)]">{ticket.category}</p>
+            <p className="text-sm text-[var(--muted)]">No support tickets yet.</p>
           </Card>
-        </Link>
-      ))}
+        ) : null}
+        {tickets.map((ticket) => (
+          <Link key={String(ticket._id)} href={`/support/${String(ticket._id)}`}>
+            <Card>
+              <div className="flex items-center justify-between">
+                <p className="font-semibold">{ticket.summary}</p>
+                <Badge>{ticket.status}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-[var(--muted)]">{ticket.category}</p>
+            </Card>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

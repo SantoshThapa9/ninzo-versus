@@ -17,7 +17,7 @@ export default async function AdminResultsPage() {
     <div className="grid gap-3">
       <h1 className="text-2xl font-bold">Result verification</h1>
       <p className="text-sm text-[var(--muted)]">
-        AI is assistive only. Confirm winners from Clash Squad matches — never auto-pay.
+        Each screenshot is read once. The backend settles only when both extracted results match.
       </p>
       {submissions.map((row) => (
         <Card key={String(row._id)}>
@@ -29,8 +29,8 @@ export default async function AdminResultsPage() {
           </div>
           {row.aiAnalysis ? (
             <div className="mt-2 text-sm text-[var(--muted)]">
-              <p>IGN {row.aiAnalysis.ign ?? "—"}</p>
-              <p>Winner guess {row.aiAnalysis.winner ?? "—"}</p>
+              <p>Custom Room ID {row.aiAnalysis.roomId ?? "—"}</p>
+              <p>Winner IGN {row.aiAnalysis.winnerIGN ?? "—"}</p>
               <p>Confidence {row.aiAnalysis.confidence ?? "—"}</p>
             </div>
           ) : (

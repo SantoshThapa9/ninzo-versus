@@ -5,16 +5,20 @@ import { userRepository } from "@/repositories/user.repository";
 import { UserRole, UserStatus } from "@/types/enums";
 import { getEnv } from "@/config/env";
 
+export function isBootstrapAdminEmail(email?: string | null) {
+  if (!email) return false;
+  return (getEnv().ADMIN_BOOTSTRAP_EMAIL ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .includes(email.trim().toLowerCase());
+}
+
 export async function registerUser(email: string, password: string, displayName: string) {
   await connectDb();
   const existing = await userRepository.findByEmail(email);
   if (existing) throw new AppError("Email already registered.", "EMAIL_TAKEN");
   const passwordHash = await bcrypt.hash(password, 12);
-  const adminEmail = getEnv().ADMIN_BOOTSTRAP_EMAIL;
-  const role =
-    adminEmail && email.toLowerCase() === adminEmail.toLowerCase()
-      ? UserRole.ADMIN
-      : UserRole.USER;
+  const role = isBootstrapAdminEmail(email) ? UserRole.ADMIN : UserRole.USER;
   return userRepository.create({
     email: email.toLowerCase(),
     passwordHash,

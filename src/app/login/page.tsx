@@ -1,8 +1,9 @@
 import { ActionForm } from "@/components/forms/action-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { loginAction, registerAction } from "@/app/actions/auth";
+import { loginAction } from "@/app/actions/auth";
 import { Card } from "@/components/ui/card";
+import GoogleSignInButton from "../../components/auth/google-signin-button";
 import Link from "next/link";
 
 export default function LoginPage() {
@@ -19,6 +20,15 @@ export default function LoginPage() {
           <Input id="password" name="password" type="password" required />
         </div>
       </ActionForm>
+
+      <div className="my-4 flex items-center gap-3">
+        <div className="h-px flex-1 bg-white/10" />
+        <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">or</span>
+        <div className="h-px flex-1 bg-white/10" />
+      </div>
+
+      <GoogleSignInButton label="Continue with Google" />
+
       <p className="mt-4 text-sm text-[var(--muted)]">
         New here? <Link href="/register">Create an account</Link>
       </p>

@@ -17,6 +17,7 @@ export const MatchStatus = {
   ACCEPTED: "accepted",
   LIVE: "live",
   AWAITING_EVIDENCE: "awaiting_evidence",
+  ANALYZING: "analyzing",
   RESULT_REVIEW: "result_review",
   SETTLED: "settled",
   CANCELLED: "cancelled",
@@ -89,7 +90,6 @@ export const ReportType = {
 export type ReportType = (typeof ReportType)[keyof typeof ReportType];
 
 export const EvidenceKind = {
-  PRE_MATCH_START: "pre_match_start",
   POST_MATCH_RESULT: "post_match_result",
   VIDEO: "video",
   OTHER: "other",

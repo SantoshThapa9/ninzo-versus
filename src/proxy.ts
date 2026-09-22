@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const protectedPrefixes = ["/wallet", "/clash", "/events", "/support", "/profile", "/admin"];
+export const protectedRoutes = ["/wallet", "/clash", "/events", "/support", "/profile", "/admin"] as const;
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const needsAuth = protectedPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const needsAuth = protectedRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
   if (!needsAuth) return NextResponse.next();
 
   const sessionCookie =
@@ -18,13 +18,22 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  if (pathname.startsWith("/admin")) {
-    return NextResponse.next();
-  }
-
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/wallet/:path*", "/clash/:path*", "/events/:path*", "/support/:path*", "/profile/:path*", "/admin/:path*"],
+  matcher: [
+    "/wallet",
+    "/wallet/:path*",
+    "/clash",
+    "/clash/:path*",
+    "/events",
+    "/events/:path*",
+    "/support",
+    "/support/:path*",
+    "/profile",
+    "/profile/:path*",
+    "/admin",
+    "/admin/:path*",
+  ],
 };

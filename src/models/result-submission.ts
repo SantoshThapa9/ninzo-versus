@@ -3,11 +3,8 @@ import { EvidenceKind } from "@/types/enums";
 
 const AiAnalysisSchema = new Schema(
   {
-    ign: String,
-    uid: String,
-    scores: String,
-    winner: String,
-    matchDetails: String,
+    roomId: String,
+    winnerIGN: String,
     confidence: Number,
     raw: Schema.Types.Mixed,
   },
@@ -28,7 +25,7 @@ const ResultSubmissionSchema = new Schema(
   { timestamps: true },
 );
 
-ResultSubmissionSchema.index({ matchId: 1, userId: 1, kind: 1 });
+ResultSubmissionSchema.index({ matchId: 1, userId: 1, kind: 1 }, { unique: true });
 
 export type ResultSubmissionDoc = InferSchemaType<typeof ResultSubmissionSchema> & {
   _id: Types.ObjectId;

@@ -11,7 +11,7 @@ import { CoinTxnType, PaymentStatus } from "@/types/enums";
 
 function razorpayClient() {
   return new Razorpay({
-    key_id: requireEnv("RAZORPAY_KEY_ID"),
+    key_id: requireEnv("NEXT_PUBLIC_RAZORPAY_KEY_ID"),
     key_secret: requireEnv("RAZORPAY_KEY_SECRET"),
   });
 }

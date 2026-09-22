@@ -63,6 +63,15 @@ export const resultRepository = {
   listForMatch(matchId: string) {
     return ResultSubmissionModel.find({ matchId }).sort({ createdAt: -1 }).lean();
   },
+  countForMatchUserKind(matchId: string, userId: string, kind: EvidenceKind) {
+    return ResultSubmissionModel.countDocuments({ matchId, userId, kind });
+  },
+  setAiAnalysis(id: string, aiAnalysis: unknown) {
+    return ResultSubmissionModel.findByIdAndUpdate(id, { $set: { aiAnalysis } }, { returnDocument: "after" });
+  },
+  deleteManyForMatch(matchId: string) {
+    return ResultSubmissionModel.deleteMany({ matchId });
+  },
 };
 
 export const disputeRepository = {
@@ -97,7 +106,7 @@ export const settingsRepository = {
     return AIConfigurationModel.findOneAndUpdate(
       { key: "global" },
       { $set: data },
-      { new: true, upsert: true },
+      { returnDocument: "after", upsert: true },
     );
   },
 };

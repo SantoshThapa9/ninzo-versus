@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { uploadPrivateMedia } from "@/services/media.service";
 import { submitMatchEvidence } from "@/services/match.service";
 import { supportRepository } from "@/repositories/ops.repository";
-import { evidenceKindFromForm } from "@/app/actions/match";
+import { EvidenceKind } from "@/types/enums";
 import { connectDb } from "@/lib/db/mongoose";
 import { rateLimit } from "@/lib/rate-limit";
 import { AppError, toErrorMessage } from "@/lib/errors";
@@ -19,18 +19,25 @@ export async function POST(request: Request) {
       return Response.json({ error: "File is required." }, { status: 400 });
     }
     const purpose = String(form.get("purpose") ?? "other");
+    if (purpose === "evidence" && !file.type.startsWith("image/")) {
+      throw new AppError("Match evidence must be an image.", "INVALID_EVIDENCE", 400);
+    }
     const folder = purpose === "evidence" ? "matches" : "support";
     const uploaded = await uploadPrivateMedia(file, folder);
 
     if (purpose === "evidence") {
-      const kind = await evidenceKindFromForm(String(form.get("kind") ?? ""));
-      await submitMatchEvidence(
+      const kind = String(form.get("kind") ?? "");
+      if (kind !== EvidenceKind.POST_MATCH_RESULT) {
+        throw new AppError("Upload a match-result screenshot.", "INVALID_EVIDENCE", 400);
+      }
+      const result = await submitMatchEvidence(
         session.user.id,
         String(form.get("matchId") ?? ""),
         kind,
         uploaded.url,
         uploaded.pathname,
       );
+      return Response.json({ ok: true, url: uploaded.url, result: result.personalResult });
     }
 
     if (purpose === "support") {
