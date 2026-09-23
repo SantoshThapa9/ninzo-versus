@@ -10,13 +10,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { adminLiveMatchAction, adminSettleAction } from "@/app/actions/match";
+import { getCurrentUserIdentity } from "@/services/player-profile.service";
 import Link from "next/link";
 
 function formatDate(value?: string | Date) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export default async function AdminMatchesPage() {
@@ -24,15 +31,50 @@ export default async function AdminMatchesPage() {
   if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
   await connectDb();
   const matches = await matchRepository.list({});
-  const matchesWithEvidence = await Promise.all(matches.map(async (match) => {
-    const [evidence, participants] = await Promise.all([
-      resultRepository.listForMatch(String(match._id)),
-      matchRepository.listParticipants(String(match._id)),
-    ]);
-    const playerA = participants.find((player) => String(player.userId) === String(match.creatorId))?.ign ?? match.creatorIgn ?? "Player 1";
-    const playerB = participants.find((player) => String(player.userId) === String(match.opponentCaptainId))?.ign ?? "Player 2";
-    return { match, evidence, playerA, playerB };
-  }));
+  const matchesWithEvidence = await Promise.all(
+    matches.map(async (match) => {
+      const [evidence, participants] = await Promise.all([
+        resultRepository.listForMatch(String(match._id)),
+        matchRepository.listParticipants(String(match._id)),
+      ]);
+      const userIds = Array.from(
+        new Set([
+          String(match.creatorId),
+          ...(match.opponentCaptainId ? [String(match.opponentCaptainId)] : []),
+          ...participants.map((player) => String(player.userId)),
+        ]),
+      );
+      const identityByUserId = new Map(
+        (
+          await Promise.all(
+            userIds.map(
+              async (userId) =>
+                [userId, await getCurrentUserIdentity(userId)] as const,
+            ),
+          )
+        ).map(([userId, identity]) => [userId, identity]),
+      );
+      const creator = participants.find(
+        (player) => String(player.userId) === String(match.creatorId),
+      );
+      const opponent = participants.find(
+        (player) => String(player.userId) === String(match.opponentCaptainId),
+      );
+      const isHistorical = ["settled", "cancelled"].includes(match.status);
+      const playerA = isHistorical
+        ? (creator?.ign ?? match.creatorIgn ?? "Player 1")
+        : (identityByUserId.get(String(match.creatorId))?.ign ??
+          creator?.ign ??
+          match.creatorIgn ??
+          "Player 1");
+      const playerB = isHistorical
+        ? (opponent?.ign ?? "Player 2")
+        : (identityByUserId.get(String(match.opponentCaptainId))?.ign ??
+          opponent?.ign ??
+          "Player 2");
+      return { match, evidence, playerA, playerB };
+    }),
+  );
 
   return (
     <div className="grid gap-4">
@@ -41,43 +83,84 @@ export default async function AdminMatchesPage() {
         <Card key={String(match._id)}>
           <div className="flex items-center justify-between">
             <Link href={`/clash/${String(match._id)}`} className="font-bold">
-              {playerA} vs {playerB} • {match.format}v{match.format} • {match.status}
+              {playerA} vs {playerB} • {match.format}v{match.format} •{" "}
+              {match.status}
             </Link>
-            <Badge>{match.acceptedStake ?? `${match.stakeMin}-${match.stakeMax}`}</Badge>
+            <Badge>
+              {match.acceptedStake ?? `${match.stakeMin}-${match.stakeMax}`}
+            </Badge>
           </div>
-          <p className="mt-2 text-sm text-[var(--muted)]">Created Date: {formatDate(match.createdAt)}</p>
-          {["awaiting_evidence", "result_review", "disputed"].includes(match.status) ? (
+          <p className="mt-2 text-sm text-[var(--muted)]">
+            Created Date: {formatDate(match.createdAt)}
+          </p>
+          {["awaiting_evidence", "result_review", "disputed"].includes(
+            match.status,
+          ) ? (
             <div className="mt-3">
-              <p className="text-sm text-[var(--muted)]">{match.status === "awaiting_evidence" ? "Waiting for player evidence. You can make a final decision now if needed." : <>AI recommendation: <span className="font-semibold text-[var(--accent-2)]">{match.aiWinnerRecommendation ?? "inconclusive"}</span></>}</p>
+              <p className="text-sm text-[var(--muted)]">
+                {match.status === "awaiting_evidence" ? (
+                  "Waiting for player evidence. You can make a final decision now if needed."
+                ) : (
+                  <>
+                    AI recommendation:{" "}
+                    <span className="font-semibold text-[var(--accent-2)]">
+                      {match.aiWinnerRecommendation ?? "inconclusive"}
+                    </span>
+                  </>
+                )}
+              </p>
               <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {evidence.map((item) => {
                   const imageUrl = `/api/clash/${String(match._id)}/evidence/${String(item._id)}`;
-                  return <a key={String(item._id)} href={imageUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-lg border border-white/10"><img src={imageUrl} alt={`Screenshot from ${String(item.userId)}`} className="aspect-video w-full object-cover" /></a>;
+                  return (
+                    <a
+                      key={String(item._id)}
+                      href={imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="overflow-hidden rounded-lg border border-white/10"
+                    >
+                      <img
+                        src={imageUrl}
+                        alt={`Screenshot from ${String(item.userId)}`}
+                        className="aspect-video w-full object-cover"
+                      />
+                    </a>
+                  );
                 })}
               </div>
             </div>
           ) : null}
-          {match.status === "accepted" ? <form action={adminLiveMatchAction} className="mt-3 grid gap-2">
-            <input type="hidden" name="matchId" value={String(match._id)} />
-            <Label>Room ID</Label>
-            <Input name="roomId" />
-            <Label>Room password</Label>
-            <Input name="roomPassword" type="password" />
-            <Button type="submit" size="sm">
-              Set live
-            </Button>
-          </form> : null}
-          {["awaiting_evidence", "result_review", "disputed"].includes(match.status) ? <form action={adminSettleAction} className="mt-3 grid gap-2">
-            <input type="hidden" name="matchId" value={String(match._id)} />
-            <select name="winnerTeam" className="h-11 rounded-xl border border-white/10 bg-black/30 px-3">
-              <option value="A">Winner: {playerA}</option>
-              <option value="B">Winner: {playerB}</option>
-              <option value="DRAW">Draw — refund both players</option>
-            </select>
-            <Button type="submit" variant="secondary" size="sm">
-              Confirm final decision
-            </Button>
-          </form> : null}
+          {match.status === "accepted" ? (
+            <form action={adminLiveMatchAction} className="mt-3 grid gap-2">
+              <input type="hidden" name="matchId" value={String(match._id)} />
+              <Label>Room ID</Label>
+              <Input name="roomId" />
+              <Label>Room password</Label>
+              <Input name="roomPassword" type="password" />
+              <Button type="submit" size="sm">
+                Set live
+              </Button>
+            </form>
+          ) : null}
+          {["awaiting_evidence", "result_review", "disputed"].includes(
+            match.status,
+          ) ? (
+            <form action={adminSettleAction} className="mt-3 grid gap-2">
+              <input type="hidden" name="matchId" value={String(match._id)} />
+              <select
+                name="winnerTeam"
+                className="h-11 rounded-xl border border-white/10 bg-black/30 px-3"
+              >
+                <option value="A">Winner: {playerA}</option>
+                <option value="B">Winner: {playerB}</option>
+                <option value="DRAW">Draw — refund both players</option>
+              </select>
+              <Button type="submit" variant="secondary" size="sm">
+                Confirm final decision
+              </Button>
+            </form>
+          ) : null}
         </Card>
       ))}
     </div>

@@ -31,6 +31,13 @@ export const userRepository = {
   updateById(id: string, update: Record<string, unknown>, session?: Session) {
     return UserModel.findByIdAndUpdate(id, update, { returnDocument: "after", session });
   },
+  updateGameIdentity(id: string, ign: string, uid: string, session?: Session) {
+    return UserModel.findByIdAndUpdate(
+      id,
+      { $set: { ign, uid } },
+      { returnDocument: "after", session },
+    );
+  },
   list(filter: Record<string, unknown> = {}, limit = 50) {
     return UserModel.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
   },
