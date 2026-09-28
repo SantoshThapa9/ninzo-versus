@@ -24,8 +24,9 @@ export default function Home() {
                 "@id": "https://ninzo-versus.vercel.app/#organization",
                 name: "Ninzo Versus",
                 url: "https://ninzo-versus.vercel.app",
+                logo: "https://ninzo-versus.vercel.app/nv.jpg",
                 sameAs: ["https://www.youtube.com/@ninzolive"],
-                description: "An esports platform for Free Fire tournaments and 1v1 challenges in India.",
+                description: "An esports platform for Garena Free Fire MAX tournaments and 1v1 challenges in India.",
               },
               {
                 "@type": "WebSite",
@@ -39,11 +40,11 @@ export default function Home() {
           }),
         }}
       />
-      <p className={styles.kicker}>India • Free Fire • Esports Challenges</p>
-      <h1 id="home-heading" className={styles.title}>Free Fire tournaments and 1v1 challenges on Ninzo Versus.</h1>
+      <p className={styles.kicker}>India • Free Fire MAX • Esports Challenges</p>
+      <h1 id="home-heading" className={styles.title}>Garena Free Fire MAX tournaments and 1v1 challenges.</h1>
       <p className={styles.lead}>
-        Play free esports tournaments and competitive Free Fire 1v1 challenges.
-        Build your record in skill-based matches hosted for players in India.
+        Ninzo Versus hosts free Garena Free Fire MAX tournaments and competitive
+        1v1 esports challenges for players in India.
       </p>
       <div className={styles.actions}>
         <Button asChild size="full">
@@ -57,15 +58,15 @@ export default function Home() {
         <Card>
           <h2 className="mb-2 text-base font-bold">Competitive 1v1 challenges</h2>
           <p className="text-sm text-[var(--muted)]">
-            Choose a format, register for a Free Fire 1v1 match, and prove your
-            skill in structured Clash Squad competition.
+            Choose a format, register for a Garena Free Fire MAX 1v1 match, and
+            prove your skill in structured Clash Squad competition.
           </p>
         </Card>
         <Card>
           <h2 className="mb-2 text-base font-bold">Daily free esports tournaments</h2>
           <p className="text-sm text-[var(--muted)]">
-            Join free Free Fire tournaments and organizer-led esports challenges
-            to build your competitive record.
+            Join free Garena Free Fire MAX tournaments and organizer-led esports
+            challenges to build your competitive record.
           </p>
         </Card>
       </div>

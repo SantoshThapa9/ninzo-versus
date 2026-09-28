@@ -1,11 +1,15 @@
 import Link from "next/link";
+import { auth } from "@/auth";
+import { ChallengeAcceptanceNotifier } from "@/components/match/challenge-acceptance-notifier";
 import { AdminLink } from "@/components/shell/admin-link";
 import { BottomNav } from "@/components/shell/bottom-nav";
 import styles from "./app-shell.module.scss";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export async function AppShell({ children }: { children: React.ReactNode }) {
+  const session = await auth();
   return (
     <div className={styles.shell}>
+      <ChallengeAcceptanceNotifier userId={session?.user?.id} />
       <header className={styles.header}>
         <Link href="/" className={styles.brand}>
           NINZO <span>VERSUS</span>

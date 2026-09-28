@@ -45,6 +45,7 @@ export function MatchChat({
   const [screenshotName, setScreenshotName] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [analyzingScreenshot, setAnalyzingScreenshot] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -52,6 +53,7 @@ export function MatchChat({
   const transcriptRef = useRef<HTMLDivElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
   const previewUrlRef = useRef<string | undefined>(undefined);
+  const sendingRef = useRef(false);
   const load = useCallback(async () => {
     const response = await fetch(`/api/clash/${matchId}/chat`, {
       cache: "no-store",
@@ -103,20 +105,35 @@ export function MatchChat({
   );
   async function send(event: React.FormEvent) {
     event.preventDefault();
-    if (!body.trim() || closed) return;
-    const response = await fetch(`/api/clash/${matchId}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
-    });
-    const data = (await response.json()) as {
-      error?: string;
-      message?: Message;
-    };
-    if (!response.ok) return setStatus(data.error ?? "Unable to send message.");
-    setBody("");
-    if (data.message) setMessages((current) => [...current, data.message!]);
-    void load();
+    if (!body.trim() || closed || sendingRef.current) return;
+
+    // The ref locks immediately, before React has a chance to render the
+    // disabled state after a rapid second click.
+    sendingRef.current = true;
+    setSending(true);
+    try {
+      const response = await fetch(`/api/clash/${matchId}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      const data = (await response.json()) as {
+        error?: string;
+        message?: Message;
+      };
+      if (!response.ok) {
+        setStatus(data.error ?? "Unable to send message.");
+        return;
+      }
+      setBody("");
+      if (data.message) setMessages((current) => [...current, data.message!]);
+      void load();
+    } catch {
+      setStatus("Unable to send message. Please try again.");
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
   }
   function selectScreenshot(file: File | undefined) {
     if (file && !file.type.startsWith("image/")) {
@@ -216,8 +233,7 @@ export function MatchChat({
       >
         {!messages.length && !status ? (
           <div className="grid h-full place-items-center px-6 text-center text-sm text-[var(--muted)]">
-            No messages yet. Share the custom room ID, password and agreed rules
-            here.
+            Share the custom room ID, password and agreed rules here.
           </div>
         ) : null}
         {messages.map((message) => {
@@ -270,9 +286,11 @@ export function MatchChat({
               <p className="text-center text-sm font-medium text-[var(--accent-2)]">
                 {result === "hold"
                   ? "⚠ Match on Hold. Conflicting screenshots detected. Admin will review."
-                  : matchStatus === "analyzing"
-                    ? "Both result screenshots are in. Verifying the extracted results now."
-                    : "Match completed. Text chat is closed; each player must upload one result screenshot."}
+                  : matchStatus === "cancelled"
+                    ? "This match was disqualified after the 24-hour chat limit. Both players' NV Tokens have been returned."
+                    : matchStatus === "analyzing"
+                      ? "Both result screenshots are in. Verifying the extracted results now."
+                      : "Match completed. Text chat is closed; each player must upload one result screenshot."}
               </p>
             )}
             {evidence.length ? (
@@ -410,19 +428,27 @@ export function MatchChat({
               value={body}
               onChange={(event) => setBody(event.target.value)}
               maxLength={1000}
-              disabled={expired}
+              disabled={expired || sending}
               placeholder={
-                expired ? "This private chat has expired" : "Type a message…"
+                expired
+                  ? "This private chat has expired"
+                  : sending
+                    ? "Sending message…"
+                    : "Type a message…"
               }
               aria-label="Message your opponent"
             />
             <Button
               type="submit"
               className="h-10 w-10 shrink-0 rounded-xl p-0"
-              disabled={expired}
+              disabled={expired || sending || !body.trim()}
               aria-label="Send message"
             >
-              <SendHorizontal size={18} />
+              {sending ? (
+                <LoaderCircle className="animate-spin" size={18} />
+              ) : (
+                <SendHorizontal size={18} />
+              )}
             </Button>
           </form>
 

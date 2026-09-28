@@ -21,10 +21,21 @@ export async function connectDb() {
     const uri = requireEnv("MONGODB_URI");
     cache.promise = mongoose.connect(uri, {
       bufferCommands: false,
+      // Do not leave a route transition waiting on MongoDB's 30 second
+      // default when the network or database is unavailable.
+      serverSelectionTimeoutMS: 8_000,
+      connectTimeoutMS: 8_000,
     });
   }
-  cache.conn = await cache.promise;
-  return cache.conn;
+  try {
+    cache.conn = await cache.promise;
+    return cache.conn;
+  } catch (error) {
+    // A rejected promise must never be retained: otherwise every later page
+    // navigation reuses the failed attempt instead of making a fresh one.
+    cache.promise = null;
+    throw error;
+  }
 }
 
 export async function withTransaction<T>(

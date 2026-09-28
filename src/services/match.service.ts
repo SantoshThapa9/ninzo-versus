@@ -737,6 +737,65 @@ export async function undoMatchCompleted(userId: string, matchId: string) {
   return updated;
 }
 
+// This is intentionally safe to call from every chat read/write. There is no
+// separate scheduler required for the timeout: the first request after the
+// deadline settles the expired match, and the ledger keys keep retries safe.
+export async function expireMatchAfterChatTimeout(matchId: string) {
+  await connectDb();
+  return withTransaction(async (session) => {
+    const match = await matchRepository.findById(matchId, session);
+    if (!match) throw new AppError("Match not found.", "NOT_FOUND", 404);
+
+    if (
+      match.status !== MatchStatus.ACCEPTED &&
+      match.status !== MatchStatus.LIVE
+    ) {
+      return match;
+    }
+
+    const expiresAt =
+      match.chatExpiresAt ??
+      new Date(new Date(match.updatedAt).getTime() + 24 * 60 * 60 * 1000);
+    if (expiresAt > new Date()) return match;
+
+    if (!match.acceptedStake || !match.opponentCaptainId) return match;
+    const participantIds = [
+      String(match.creatorId),
+      String(match.opponentCaptainId),
+    ];
+
+    for (const userId of participantIds) {
+      await applyLedger({
+        userId,
+        type: CoinTxnType.STAKE_REFUND,
+        amount: match.acceptedStake,
+        availableDelta: match.acceptedStake,
+        lockedDelta: -match.acceptedStake,
+        referenceType: "Match",
+        referenceId: matchId,
+        idempotencyKey: `chat-expiry-refund:${matchId}:${userId}`,
+        metadata: { reason: "chat_expired" },
+        session,
+      });
+    }
+
+    match.status = MatchStatus.CANCELLED;
+    match.completedAt = new Date();
+    match.winnerTeam = null;
+    match.winnerPayout = 0;
+    match.platformFeeAmount = 0;
+    await match.save({ session });
+
+    await auditRepository.write({
+      action: "match.chat_expired_disqualified",
+      entityType: "Match",
+      entityId: matchId,
+      metadata: { refundedParticipantIds: participantIds },
+    });
+    return match;
+  });
+}
+
 export async function adminSettleMatch(
   adminId: string | undefined,
   matchId: string,
@@ -887,6 +946,39 @@ export async function listOpenMatches() {
       characterSkill,
     };
   });
+}
+
+export async function listChallengeAcceptancesForCreator(userId: string) {
+  await connectDb();
+  const matches = await MatchModel.find({
+    creatorId: userId,
+    opponentCaptainId: { $exists: true, $ne: null },
+    status: {
+      $in: [
+        MatchStatus.ACCEPTED,
+        MatchStatus.LIVE,
+        MatchStatus.AWAITING_EVIDENCE,
+        MatchStatus.ANALYZING,
+        MatchStatus.RESULT_REVIEW,
+        MatchStatus.DISPUTED,
+      ],
+    },
+  })
+    .select("_id opponentCaptainId chatExpiresAt updatedAt")
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  return Promise.all(
+    matches.map(async (match) => ({
+      matchId: String(match._id),
+      // chatExpiresAt is set precisely when the opponent accepts and does not
+      // change as the match later moves to live or evidence review.
+      acceptedAt: (match.chatExpiresAt ?? match.updatedAt).toISOString(),
+      opponentIgn:
+        (await getCurrentUserIdentity(String(match.opponentCaptainId))).ign ||
+        "An opponent",
+    })),
+  );
 }
 
 export async function listActiveMatchesForUser(userId: string) {

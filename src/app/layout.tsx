@@ -6,13 +6,16 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://ninzo-versus.vercel.app"),
   title: {
-    default: "Ninzo Versus | Free Fire Tournaments & 1v1 Challenges",
+    default: "Ninzo Versus | Garena Free Fire MAX Tournaments & Esports",
     template: "%s | Ninzo Versus",
   },
   description:
-    "Join Ninzo Versus for free Free Fire tournaments, esports challenges, and competitive 1v1 matches for players in India.",
+    "Join Ninzo Versus for free Garena Free Fire MAX tournaments, esports challenges, and competitive 1v1 matches for players in India.",
   keywords: [
     "Ninzo Versus",
+    "Garena Free Fire MAX tournament",
+    "Free Fire MAX tournament India",
+    "Free Fire MAX esports",
     "Free Fire tournament",
     "free Free Fire tournament",
     "Free Fire 1v1",
@@ -24,18 +27,26 @@ export const metadata: Metadata = {
   applicationName: "Ninzo Versus",
   category: "Esports",
   alternates: { canonical: "/" },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", type: "image/x-icon" },
+      { url: "/nv.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: [{ url: "/nv.jpg", sizes: "1024x1024", type: "image/jpeg" }],
+  },
   openGraph: {
     type: "website",
     locale: "en_IN",
     url: "/",
     siteName: "Ninzo Versus",
-    title: "Ninzo Versus | Free Fire Tournaments & 1v1 Challenges",
-    description: "Free Free Fire tournaments, esports challenges, and competitive 1v1 matches for players in India.",
+    title: "Ninzo Versus | Garena Free Fire MAX Tournaments & Esports",
+    description: "Free Garena Free Fire MAX tournaments, esports challenges, and competitive 1v1 matches for players in India.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ninzo Versus | Free Fire Tournaments & 1v1 Challenges",
-    description: "Free Free Fire tournaments, esports challenges, and competitive 1v1 matches for players in India.",
+    title: "Ninzo Versus | Garena Free Fire MAX Tournaments & Esports",
+    description: "Free Garena Free Fire MAX tournaments, esports challenges, and competitive 1v1 matches for players in India.",
   },
   robots: {
     index: true,

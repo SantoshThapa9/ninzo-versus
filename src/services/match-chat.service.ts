@@ -4,7 +4,10 @@ import { AppError } from "@/lib/errors";
 import { MatchChatMessageModel } from "@/models/match-chat-message";
 import { matchRepository } from "@/repositories/match.repository";
 import { resultRepository } from "@/repositories/ops.repository";
-import { finalizeMatchEvidence } from "@/services/match.service";
+import {
+  expireMatchAfterChatTimeout,
+  finalizeMatchEvidence,
+} from "@/services/match.service";
 import { getCurrentUserIdentity } from "@/services/player-profile.service";
 
 const messageSchema = z
@@ -83,6 +86,8 @@ function getChatExpiry(match: { chatExpiresAt?: Date; updatedAt: Date }) {
 
 async function assertChatOpen(userId: string, matchId: string) {
   let match = await getParticipantMatch(userId, matchId);
+  await expireMatchAfterChatTimeout(matchId);
+  match = await getParticipantMatch(userId, matchId);
   if (match.status === "awaiting_evidence" || match.status === "analyzing") {
     await finalizeMatchEvidence(matchId);
     match = await getParticipantMatch(userId, matchId);
@@ -113,6 +118,8 @@ async function assertChatOpen(userId: string, matchId: string) {
 
 export async function getMatchChat(userId: string, matchId: string) {
   await connectDb();
+  await getParticipantMatch(userId, matchId);
+  await expireMatchAfterChatTimeout(matchId);
   const match = await getParticipantMatch(userId, matchId);
   const isEvidenceMode = [
     "awaiting_evidence",
@@ -164,7 +171,10 @@ export async function getMatchChat(userId: string, matchId: string) {
   const provisionalResult = myAnalysis?.winnerIGN ? extractedResult : undefined;
   return {
     expiresAt,
-    closed: isEvidenceMode || (match.completedBy?.length ?? 0) > 0,
+    closed:
+      isEvidenceMode ||
+      match.status === "cancelled" ||
+      (match.completedBy?.length ?? 0) > 0,
     matchStatus: match.status,
     result:
       match.status === "settled"
