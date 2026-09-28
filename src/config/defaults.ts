@@ -34,6 +34,7 @@ export const MEDIA_DEFAULTS = {
 } as const;
 
 export const CLASH_DEFAULTS = {
+  //curently only solo focus
   teamSizes: [1] as const,
   warning:
     "Check the custom-room settings carefully. Intentionally changing room settings before the match may result in investigation and account penalties.",

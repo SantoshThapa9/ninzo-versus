@@ -34,8 +34,10 @@ const createMatchSchema = z.object({
   format: z
     .number()
     .int()
-    .refine((n) =>
-      CLASH_DEFAULTS.teamSizes.includes(n as 1 | 2 | 3 | 4 | 5 | 6),
+    .refine(
+      (n) => CLASH_DEFAULTS.teamSizes.includes(n as 1),
+      //curently only solo focus
+      // CLASH_DEFAULTS.teamSizes.includes(n as 1 | 2 | 3 | 4 | 5 | 6),
     ),
   stakeMin: z.number().int().min(ECONOMY_DEFAULTS.minMatchStakeCoins),
   stakeMax: z.number().int().min(ECONOMY_DEFAULTS.minMatchStakeCoins),
@@ -380,8 +382,8 @@ export async function submitMatchEvidence(
       ? String(match.opponentCaptainId)
       : String(match.creatorId);
   const opponentIgn = opponentId
-    ? (participants.find((player) => String(player.userId) === opponentId)?.ign ??
-      undefined)
+    ? (participants.find((player) => String(player.userId) === opponentId)
+        ?.ign ?? undefined)
     : undefined;
   let analysis: VisionResult = { confidence: 0 };
   try {
@@ -581,9 +583,7 @@ export async function finalizeMatchEvidence(matchId: string) {
       // to override two matching extractions and the dedicated final validator.
       const complete = (result?: VisionResult) =>
         Boolean(
-          result &&
-          normalizeRoomId(result.roomId) &&
-          result.winnerIGN?.trim(),
+          result && normalizeRoomId(result.roomId) && result.winnerIGN?.trim(),
         );
       const participants = await matchRepository.listParticipants(matchId);
       const creatorIgn = participants.find(
@@ -659,10 +659,7 @@ export async function finalizeMatchEvidence(matchId: string) {
             normalizeRoomId(creatorResult.roomId),
           );
         } catch (error) {
-          if (
-            error instanceof AppError &&
-            error.code === "REUSED_ROOM_ID"
-          ) {
+          if (error instanceof AppError && error.code === "REUSED_ROOM_ID") {
             claimed.aiWinnerRecommendation = "held for reused room ID review";
             claimed.aiAnalysis = {
               individual: [creatorResult, opponentResult],
