@@ -18,19 +18,32 @@ export default function Home() {
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
             "@context": "https://schema.org",
-            "@type": "SportsOrganization",
-            name: "Ninzo Versus",
-            url: "https://ninzo-versus.com",
-            description: "Skill-based gaming platform for daily free esports tournaments and competitive 1v1 challenges.",
-            areaServed: "IN",
+            "@graph": [
+              {
+                "@type": "Organization",
+                "@id": "https://ninzo-versus.vercel.app/#organization",
+                name: "Ninzo Versus",
+                url: "https://ninzo-versus.vercel.app",
+                sameAs: ["https://www.youtube.com/@ninzolive"],
+                description: "An esports platform for Free Fire tournaments and 1v1 challenges in India.",
+              },
+              {
+                "@type": "WebSite",
+                "@id": "https://ninzo-versus.vercel.app/#website",
+                name: "Ninzo Versus",
+                url: "https://ninzo-versus.vercel.app",
+                inLanguage: "en-IN",
+                publisher: { "@id": "https://ninzo-versus.vercel.app/#organization" },
+              },
+            ],
           }),
         }}
       />
-      <p className={styles.kicker}>India • Skill-Based Gaming • Hosted Cups</p>
-      <h1 id="home-heading" className={styles.title}>Play. Prove. Claim esports rewards.</h1>
+      <p className={styles.kicker}>India • Free Fire • Esports Challenges</p>
+      <h1 id="home-heading" className={styles.title}>Free Fire tournaments and 1v1 challenges on Ninzo Versus.</h1>
       <p className={styles.lead}>
-        Competitive 1v1 challenges, daily free esports tournaments, and
-        performance-based rewards verified against official results.
+        Play free esports tournaments and competitive Free Fire 1v1 challenges.
+        Build your record in skill-based matches hosted for players in India.
       </p>
       <div className={styles.actions}>
         <Button asChild size="full">
@@ -44,15 +57,15 @@ export default function Home() {
         <Card>
           <h2 className="mb-2 text-base font-bold">Competitive 1v1 challenges</h2>
           <p className="text-sm text-[var(--muted)]">
-            Choose a format, register for a match, and prove your skill in
-            structured Clash Squad competition.
+            Choose a format, register for a Free Fire 1v1 match, and prove your
+            skill in structured Clash Squad competition.
           </p>
         </Card>
         <Card>
           <h2 className="mb-2 text-base font-bold">Daily free esports tournaments</h2>
           <p className="text-sm text-[var(--muted)]">
-            Build your record through free skill-based gaming and organizer-led
-            tournament competition.
+            Join free Free Fire tournaments and organizer-led esports challenges
+            to build your competitive record.
           </p>
         </Card>
       </div>

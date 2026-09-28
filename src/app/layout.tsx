@@ -4,34 +4,44 @@ import { AppShell } from "@/components/shell/app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://ninzo-versus.com"),
+  metadataBase: new URL("https://ninzo-versus.vercel.app"),
   title: {
-    default: "Ninzo Versus | Daily Free Esports Tournaments",
+    default: "Ninzo Versus | Free Fire Tournaments & 1v1 Challenges",
     template: "%s | Ninzo Versus",
   },
   description:
-    "Join daily free esports tournaments and competitive 1v1 challenges on Ninzo Versus, a skill-based gaming platform for Free Fire players in India.",
+    "Join Ninzo Versus for free Free Fire tournaments, esports challenges, and competitive 1v1 matches for players in India.",
   keywords: [
-    "daily free esports tournaments",
-    "skill-based gaming",
-    "competitive 1v1 challenges",
+    "Ninzo Versus",
+    "Free Fire tournament",
+    "free Free Fire tournament",
+    "Free Fire 1v1",
+    "esports free",
+    "esports challenge",
+    "1v1 challenge",
     "Free Fire tournaments India",
-    "redeem gaming rewards",
   ],
+  applicationName: "Ninzo Versus",
+  category: "Esports",
+  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     locale: "en_IN",
     url: "/",
     siteName: "Ninzo Versus",
-    title: "Ninzo Versus | Daily Free Esports Tournaments",
-    description: "Skill-based gaming with daily free esports tournaments and competitive 1v1 challenges.",
+    title: "Ninzo Versus | Free Fire Tournaments & 1v1 Challenges",
+    description: "Free Free Fire tournaments, esports challenges, and competitive 1v1 matches for players in India.",
   },
   twitter: {
-    card: "summary",
-    title: "Ninzo Versus | Daily Free Esports Tournaments",
-    description: "Skill-based gaming with daily free esports tournaments and competitive 1v1 challenges.",
+    card: "summary_large_image",
+    title: "Ninzo Versus | Free Fire Tournaments & 1v1 Challenges",
+    description: "Free Free Fire tournaments, esports challenges, and competitive 1v1 matches for players in India.",
   },
-  robots: { index: true, follow: true },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large" },
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
