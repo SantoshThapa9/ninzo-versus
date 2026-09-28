@@ -1,18 +1,17 @@
 import { z } from "zod";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
-import { IGN_COUNTS } from "@/config/defaults";
+import { DEFAULT_PRIZE_SPLIT } from "@/config/defaults";
 import { eventRepository } from "@/repositories/event.repository";
 import { applyLedger } from "@/services/wallet.service";
 import { auditRepository } from "@/repositories/ops.repository";
+import { getCurrentUserIdentity } from "@/services/player-profile.service";
 import { CoinTxnType, EventFormat, EventStatus } from "@/types/enums";
 
 const eventSchema = z.object({
   name: z.string().min(3),
-  eventDate: z.string(),
-  startTime: z.string(),
-  registrationOpensAt: z.string(),
-  registrationClosesAt: z.string(),
+  eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a valid event date."),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Choose a valid start time."),
   format: z.enum([EventFormat.SOLO, EventFormat.DUO, EventFormat.SQUAD]),
   maxSlots: z.number().int().positive(),
   entryFeeCoins: z.number().int().min(0),
@@ -26,11 +25,23 @@ const eventSchema = z.object({
   unlimitedGlooWall: z.boolean(),
   roomRules: z.string().optional(),
   customNotes: z.string().optional(),
-});
+}).refine(
+  (value) =>
+    value.prizeDistribution.platformProfit === DEFAULT_PRIZE_SPLIT.platformProfitPercent &&
+    value.prizeDistribution.first === DEFAULT_PRIZE_SPLIT.firstPercent &&
+    value.prizeDistribution.second === DEFAULT_PRIZE_SPLIT.secondPercent &&
+    value.prizeDistribution.third === DEFAULT_PRIZE_SPLIT.thirdPercent,
+  "The event reward split is fixed at 50% / 30% / 10% with 10% for the platform.",
+);
+
+function eventStartAt(eventDate: string, startTime: string) {
+  const value = new Date(`${eventDate}T${startTime}:00+05:30`);
+  if (Number.isNaN(value.getTime())) throw new AppError("Choose a valid event start.", "INVALID_EVENT_START");
+  return value;
+}
 
 const registerSchema = z.object({
   eventId: z.string(),
-  igns: z.array(z.string().min(2)).min(1),
 });
 
 export async function createEvent(adminId: string, raw: unknown) {
@@ -38,11 +49,11 @@ export async function createEvent(adminId: string, raw: unknown) {
   await connectDb();
   const event = await eventRepository.create({
     ...input,
-    eventDate: new Date(input.eventDate),
-    registrationOpensAt: new Date(input.registrationOpensAt),
-    registrationClosesAt: new Date(input.registrationClosesAt),
+    eventDate: new Date(`${input.eventDate}T00:00:00.000Z`),
+    registrationOpensAt: new Date(),
+    registrationClosesAt: eventStartAt(input.eventDate, input.startTime),
     createdBy: adminId,
-    status: EventStatus.DRAFT,
+    status: EventStatus.PUBLISHED,
   });
   await auditRepository.write({
     actorId: adminId,
@@ -58,15 +69,12 @@ export async function updateEvent(adminId: string, eventId: string, raw: unknown
   await connectDb();
   const event = await eventRepository.findById(eventId);
   if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
+  const eventDate = input.eventDate ?? event.eventDate.toISOString().slice(0, 10);
+  const startTime = input.startTime ?? event.startTime;
   Object.assign(event, {
     ...input,
-    eventDate: input.eventDate ? new Date(input.eventDate) : event.eventDate,
-    registrationOpensAt: input.registrationOpensAt
-      ? new Date(input.registrationOpensAt)
-      : event.registrationOpensAt,
-    registrationClosesAt: input.registrationClosesAt
-      ? new Date(input.registrationClosesAt)
-      : event.registrationClosesAt,
+    eventDate: new Date(`${eventDate}T00:00:00.000Z`),
+    registrationClosesAt: eventStartAt(eventDate, startTime),
   });
   await event.save();
   await auditRepository.write({
@@ -103,8 +111,11 @@ export async function saveEventRoom(
   await connectDb();
   const event = await eventRepository.findById(eventId);
   if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
-  event.roomId = roomId;
-  event.roomPassword = roomPassword;
+  event.roomId = roomId.trim();
+  event.roomPassword = roomPassword.trim();
+  if (event.roomId && event.roomPassword) {
+    event.status = EventStatus.LIVE;
+  }
   await event.save();
   await auditRepository.write({
     actorId: adminId,
@@ -128,12 +139,12 @@ export async function registerForEvent(userId: string, raw: unknown) {
       throw new AppError("This event is not open for registration.", "EVENT_CLOSED");
     }
     const now = new Date();
-    if (now < event.registrationOpensAt || now > event.registrationClosesAt) {
+    if (now > event.registrationClosesAt) {
       throw new AppError("Registration window is closed.", "WINDOW_CLOSED");
     }
-    const required = IGN_COUNTS[event.format as keyof typeof IGN_COUNTS];
-    if (input.igns.length !== required || input.igns.some((ign) => !ign.trim())) {
-      throw new AppError(`This format requires exactly ${required} IGN(s).`, "IGN_COUNT");
+    const identity = await getCurrentUserIdentity(userId);
+    if (!identity.ign) {
+      throw new AppError("Add your In Game Name in Profile before registering.", "IGN_REQUIRED");
     }
     const existing = await eventRepository.findTeam(input.eventId, userId, session);
     if (existing) throw new AppError("You already registered for this event.", "ALREADY_REGISTERED");
@@ -148,7 +159,7 @@ export async function registerForEvent(userId: string, raw: unknown) {
       {
         eventId: input.eventId,
         captainId: userId,
-        igns: input.igns.map((i) => i.trim()),
+        igns: [identity.ign],
         slotNumber: event.reservedSlots,
         paidCoins: event.entryFeeCoins,
       },
@@ -182,10 +193,11 @@ export async function payEventPrizes(
   const event = await eventRepository.findById(eventId);
   if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
   const teams = await eventRepository.listTeams(eventId);
+  const prizePool = teams.length * event.entryFeeCoins;
   const prizeFor = {
-    1: event.prizeDistribution.first,
-    2: event.prizeDistribution.second,
-    3: event.prizeDistribution.third,
+    1: Math.floor((prizePool * event.prizeDistribution.first) / 100),
+    2: Math.floor((prizePool * event.prizeDistribution.second) / 100),
+    3: Math.floor((prizePool * event.prizeDistribution.third) / 100),
   };
 
   await withTransaction(async (session) => {

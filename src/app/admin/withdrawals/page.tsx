@@ -15,12 +15,12 @@ export default async function AdminWithdrawalsPage() {
 
   return (
     <div className="grid gap-4">
-      <h1 className="text-2xl font-bold">Withdrawals</h1>
-      <p className="text-sm text-[var(--muted)]">0% fee. Manual UPI payout by admin.</p>
+      <h1 className="text-2xl font-bold">Reward fulfillment</h1>
+      <p className="text-sm text-[var(--muted)]">Post-match result verification and reward redemption are fulfilled by the organizer.</p>
       {withdrawals.map((row) => (
         <Card key={String(row._id)}>
           <div className="flex items-center justify-between">
-            <p className="font-bold">{row.coins} NV</p>
+            <p className="font-bold">{row.coins} NV Tokens</p>
             <Badge>{row.status}</Badge>
           </div>
           <p className="mt-1 text-sm text-[var(--muted)]">UPI {row.upiId}</p>

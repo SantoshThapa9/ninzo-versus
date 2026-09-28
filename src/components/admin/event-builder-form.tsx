@@ -1,4 +1,7 @@
-import { EventFormat, EventStatus } from "@/types/enums";
+"use client";
+
+import { useState } from "react";
+import { EventFormat } from "@/types/enums";
 import { DEFAULT_PRIZE_SPLIT } from "@/config/defaults";
 import { ActionForm } from "@/components/forms/action-form";
 import { Input } from "@/components/ui/input";
@@ -11,8 +14,6 @@ type EventValues = {
   name?: string;
   eventDate?: string;
   startTime?: string;
-  registrationOpensAt?: string;
-  registrationClosesAt?: string;
   format?: string;
   maxSlots?: number;
   entryFeeCoins?: number;
@@ -24,28 +25,29 @@ type EventValues = {
   };
   characterSkill?: boolean;
   unlimitedGlooWall?: boolean;
-  roomRules?: string;
   customNotes?: string;
 };
 
-function toLocal(value?: string) {
+function toDateInput(value?: string) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return date.toISOString().slice(0, 10);
 }
 
 export function EventBuilderForm({ event }: { event?: EventValues }) {
-  const prizes = event?.prizeDistribution ?? {
-    platformProfit: DEFAULT_PRIZE_SPLIT.platformProfitPercent,
-    first: DEFAULT_PRIZE_SPLIT.firstPercent,
-    second: DEFAULT_PRIZE_SPLIT.secondPercent,
-    third: DEFAULT_PRIZE_SPLIT.thirdPercent,
+  const [maxSlots, setMaxSlots] = useState(event?.maxSlots ?? 48);
+  const [entryFeeCoins, setEntryFeeCoins] = useState(event?.entryFeeCoins ?? 10);
+  const totalPool = Math.max(0, maxSlots) * Math.max(0, entryFeeCoins);
+  const rewards = {
+    first: Math.floor((totalPool * DEFAULT_PRIZE_SPLIT.firstPercent) / 100),
+    second: Math.floor((totalPool * DEFAULT_PRIZE_SPLIT.secondPercent) / 100),
+    third: Math.floor((totalPool * DEFAULT_PRIZE_SPLIT.thirdPercent) / 100),
+    platform: totalPool - Math.floor((totalPool * 90) / 100),
   };
 
   return (
-    <ActionForm action={saveEventAction} submitLabel={event?.id ? "Update event" : "Save draft"}>
+    <ActionForm action={saveEventAction} submitLabel={event?.id ? "Update event" : "Publish & open registration"}>
       {event?.id ? <input type="hidden" name="eventId" value={event.id} /> : null}
       <div>
         <Label htmlFor="name">Event name</Label>
@@ -53,31 +55,11 @@ export function EventBuilderForm({ event }: { event?: EventValues }) {
       </div>
       <div>
         <Label htmlFor="eventDate">Date</Label>
-        <Input id="eventDate" name="eventDate" type="datetime-local" defaultValue={toLocal(event?.eventDate)} required />
+        <Input id="eventDate" name="eventDate" type="date" defaultValue={toDateInput(event?.eventDate)} required />
       </div>
       <div>
-        <Label htmlFor="startTime">Start time</Label>
-        <Input id="startTime" name="startTime" defaultValue={event?.startTime ?? "21:00"} required />
-      </div>
-      <div>
-        <Label htmlFor="registrationOpensAt">Registration opens</Label>
-        <Input
-          id="registrationOpensAt"
-          name="registrationOpensAt"
-          type="datetime-local"
-          defaultValue={toLocal(event?.registrationOpensAt)}
-          required
-        />
-      </div>
-      <div>
-        <Label htmlFor="registrationClosesAt">Registration closes</Label>
-        <Input
-          id="registrationClosesAt"
-          name="registrationClosesAt"
-          type="datetime-local"
-          defaultValue={toLocal(event?.registrationClosesAt)}
-          required
-        />
+        <Label htmlFor="startTime">Match start time</Label>
+        <Input id="startTime" name="startTime" type="time" defaultValue={event?.startTime ?? "21:00"} required />
       </div>
       <fieldset className="grid gap-2">
         <legend className="mb-1 text-xs font-medium text-[var(--muted)]">Format</legend>
@@ -89,30 +71,20 @@ export function EventBuilderForm({ event }: { event?: EventValues }) {
         ))}
       </fieldset>
       <div>
-        <Label htmlFor="maxSlots">Max teams / players</Label>
-        <Input id="maxSlots" name="maxSlots" type="number" min={1} defaultValue={event?.maxSlots ?? 48} required />
+        <Label htmlFor="maxSlots">Maximum registrations</Label>
+        <Input id="maxSlots" name="maxSlots" type="number" min={1} value={maxSlots} onChange={(e) => setMaxSlots(Number(e.target.value))} required />
       </div>
       <div>
-        <Label htmlFor="entryFeeCoins">Entry fee (NV Coin)</Label>
-        <Input id="entryFeeCoins" name="entryFeeCoins" type="number" min={0} defaultValue={event?.entryFeeCoins ?? 100} required />
+        <Label htmlFor="entryFeeCoins">Match registration (NV Tokens)</Label>
+        <Input id="entryFeeCoins" name="entryFeeCoins" type="number" min={0} value={entryFeeCoins} onChange={(e) => setEntryFeeCoins(Number(e.target.value))} required />
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label htmlFor="platformProfit">Platform profit</Label>
-          <Input id="platformProfit" name="platformProfit" type="number" min={0} defaultValue={prizes.platformProfit} />
-        </div>
-        <div>
-          <Label htmlFor="first">1st</Label>
-          <Input id="first" name="first" type="number" min={0} defaultValue={prizes.first} />
-        </div>
-        <div>
-          <Label htmlFor="second">2nd</Label>
-          <Input id="second" name="second" type="number" min={0} defaultValue={prizes.second} />
-        </div>
-        <div>
-          <Label htmlFor="third">3rd</Label>
-          <Input id="third" name="third" type="number" min={0} defaultValue={prizes.third} />
-        </div>
+      <input type="hidden" name="platformProfit" value={DEFAULT_PRIZE_SPLIT.platformProfitPercent} />
+      <input type="hidden" name="first" value={DEFAULT_PRIZE_SPLIT.firstPercent} />
+      <input type="hidden" name="second" value={DEFAULT_PRIZE_SPLIT.secondPercent} />
+      <input type="hidden" name="third" value={DEFAULT_PRIZE_SPLIT.thirdPercent} />
+      <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm">
+        <p className="font-medium">Projected prize pool at {maxSlots || 0} registrations: {totalPool} NV Tokens</p>
+        <p className="mt-1 text-[var(--muted)]">1st: {rewards.first} (50%) • 2nd: {rewards.second} (30%) • 3rd: {rewards.third} (10%) • Platform: {rewards.platform} (10%)</p>
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" name="characterSkill" defaultChecked={event?.characterSkill ?? true} />
@@ -123,15 +95,11 @@ export function EventBuilderForm({ event }: { event?: EventValues }) {
         Unlimited Gloo Wall On
       </label>
       <div>
-        <Label htmlFor="roomRules">Room rules</Label>
-        <Textarea id="roomRules" name="roomRules" defaultValue={event?.roomRules} />
-      </div>
-      <div>
-        <Label htmlFor="customNotes">Custom notes</Label>
+        <Label htmlFor="customNotes">Player note</Label>
         <Textarea id="customNotes" name="customNotes" defaultValue={event?.customNotes} />
       </div>
       <p className="text-xs text-[var(--muted)]">
-        Status stays {EventStatus.DRAFT} until you publish. Unpublished events cannot take payments or slots.
+        Saving a new event publishes it immediately. Registration closes automatically at match start time.
       </p>
     </ActionForm>
   );

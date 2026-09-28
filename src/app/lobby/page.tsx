@@ -24,14 +24,14 @@ export default async function LobbyPage() {
   return (
     <div className="grid gap-5">
       <Card>
-        <p className="text-xs uppercase tracking-[0.16em] text-[var(--accent-2)]">Wallet</p>
-        <p className="mt-1 text-3xl font-extrabold">{user?.availableCoins ?? 0} NV</p>
-        <p className="text-sm text-[var(--muted)]">Locked {user?.lockedCoins ?? 0} • ₹1 = 1 NV</p>
+        <p className="text-xs uppercase tracking-[0.16em] text-[var(--accent-2)]">NV Token balance</p>
+        <p className="mt-1 text-3xl font-extrabold">{user?.availableCoins ?? 0} NV Tokens</p>
+        <p className="text-sm text-[var(--muted)]">Reserved for match registration: {user?.lockedCoins ?? 0} NV Tokens</p>
       </Card>
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Open Clash Squad</h1>
-        <Button asChild size="sm">
-          <Link href="/clash/new">Post match</Link>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-bold">Open competitive challenges</h1>
+        <Button asChild size="sm" className="w-full sm:w-auto">
+          <Link href="/clash/new">Create challenge</Link>
         </Button>
       </div>
       {matches.length === 0 ? (
@@ -42,7 +42,7 @@ export default async function LobbyPage() {
             <Card>
               <div className="flex items-center justify-between gap-2">
                 <Badge>{match.format}v{match.format}</Badge>
-                <span className="text-sm font-semibold">{match.stakeMin === match.stakeMax ? `${match.stakeMin} NV each` : `${match.stakeMin}–${match.stakeMax} NV`}</span>
+                <span className="text-sm font-semibold">{match.stakeMin === match.stakeMax ? `${match.stakeMin} NV Tokens` : `${match.stakeMin}–${match.stakeMax} NV Tokens`}</span>
               </div>
               <div className="mt-3 grid gap-1 text-sm text-[var(--muted)]">
                 <p>Posted by: {match.creatorIgn ?? "Unknown"}</p>
@@ -67,7 +67,7 @@ export default async function LobbyPage() {
                 <Badge>{event.status}</Badge>
               </div>
               <p className="mt-1 text-sm text-[var(--muted)]">
-                {event.format} • {event.entryFeeCoins} NV • {event.reservedSlots}/{event.maxSlots}
+                {event.format} • Match registration: {event.entryFeeCoins} NV Tokens • {event.reservedSlots}/{event.maxSlots}
               </p>
             </Card>
           </Link>

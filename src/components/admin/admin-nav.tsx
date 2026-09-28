@@ -5,11 +5,8 @@ const items = [
   ["/admin", "Home"],
   ["/admin/matches", "Matches"],
   ["/admin/events", "Events"],
-  ["/admin/withdrawals", "Payouts"],
+  ["/admin/withdrawals", "Reward fulfillment"],
   ["/admin/support", "Support"],
-  ["/admin/results", "Results"],
-  ["/admin/ai", "Config"],
-  ["/admin/audit", "Audit"],
 ];
 
 export function AdminNav() {

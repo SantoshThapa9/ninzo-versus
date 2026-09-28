@@ -8,12 +8,9 @@ const links = [
   ["Matches", "/admin/matches"],
   ["Events", "/admin/events"],
   ["New event", "/admin/events/new"],
-  ["Withdrawals", "/admin/withdrawals"],
-  ["Wallets", "/admin/wallets"],
+  ["Reward fulfillment", "/admin/withdrawals"],
+  ["Player inventories", "/admin/wallets"],
   ["Support", "/admin/support"],
-  ["Results", "/admin/results"],
-  ["AI & economy", "/admin/ai"],
-  ["Audit", "/admin/audit"],
 ];
 
 export default async function AdminHome() {

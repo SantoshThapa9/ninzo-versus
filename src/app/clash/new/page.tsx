@@ -15,9 +15,9 @@ export default async function NewClashPage() {
 
   return (
     <Card>
-      <h1 className="mb-3 text-2xl font-bold">Post Clash Squad</h1>
+      <h1 className="mb-3 text-2xl font-bold">Create a competitive challenge</h1>
       <p className="mb-4 text-sm text-[var(--danger)]">{settings.clashWarning}</p>
-      <ActionForm action={createMatchAction} submitLabel="Lock max stake">
+      <ActionForm action={createMatchAction} submitLabel="Register challenge with NV Tokens">
         <div>
           <Label htmlFor="format">Team size</Label>
           <select id="format" name="format" className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3">
@@ -29,11 +29,11 @@ export default async function NewClashPage() {
           </select>
         </div>
         <div>
-          <Label htmlFor="stakeMin">Stake min (NV) — minimum 10 NV</Label>
+          <Label htmlFor="stakeMin">Match registration range (NV Tokens) — minimum 10</Label>
           <Input id="stakeMin" name="stakeMin" type="number" min={ECONOMY_DEFAULTS.minMatchStakeCoins} required />
         </div>
         <div>
-          <Label htmlFor="stakeMax">Stake max (NV) — this amount is locked</Label>
+          <Label htmlFor="stakeMax">Maximum match registration (NV Tokens)</Label>
           <Input id="stakeMax" name="stakeMax" type="number" min={ECONOMY_DEFAULTS.minMatchStakeCoins} required />
         </div>
         <p className="text-sm text-[var(--muted)]">Your saved In Game Name and UID from your profile will be used for this match.</p>

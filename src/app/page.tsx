@@ -1,16 +1,36 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import styles from "./home.module.scss";
 
+export const revalidate = 86400;
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
+
 export default function Home() {
   return (
-    <section className={styles.hero}>
-      <p className={styles.kicker}>India • Clash Squad • Hosted Cups</p>
-      <h1 className={styles.title}>Play. Prove. Get paid in NV Coins.</h1>
+    <section className={styles.hero} aria-labelledby="home-heading">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SportsOrganization",
+            name: "Ninzo Versus",
+            url: "https://ninzo-versus.com",
+            description: "Skill-based gaming platform for daily free esports tournaments and competitive 1v1 challenges.",
+            areaServed: "IN",
+          }),
+        }}
+      />
+      <p className={styles.kicker}>India • Skill-Based Gaming • Hosted Cups</p>
+      <h1 id="home-heading" className={styles.title}>Play. Prove. Claim esports rewards.</h1>
       <p className={styles.lead}>
-        ₹1 = 1 NV Coin. Dynamic P2P stakes, admin-hosted events, AI-assisted
-        proof, and human-final decisions.
+        Competitive 1v1 challenges, daily free esports tournaments, and
+        performance-based rewards verified against official results.
       </p>
       <div className={styles.actions}>
         <Button asChild size="full">
@@ -22,17 +42,17 @@ export default function Home() {
       </div>
       <div className={styles.grid}>
         <Card>
-          <h2 className="mb-2 text-base font-bold">User Clash Squad</h2>
+          <h2 className="mb-2 text-base font-bold">Competitive 1v1 challenges</h2>
           <p className="text-sm text-[var(--muted)]">
-            1v1 to 6v6. Post a stake range, lock the max, accept inside the
-            range, refund the rest.
+            Choose a format, register for a match, and prove your skill in
+            structured Clash Squad competition.
           </p>
         </Card>
         <Card>
-          <h2 className="mb-2 text-base font-bold">Hosted nights</h2>
+          <h2 className="mb-2 text-base font-bold">Daily free esports tournaments</h2>
           <p className="text-sm text-[var(--muted)]">
-            Admin publishes only when tonight is on. No draft event can take
-            payments or slots.
+            Build your record through free skill-based gaming and organizer-led
+            tournament competition.
           </p>
         </Card>
       </div>

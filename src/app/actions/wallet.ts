@@ -23,7 +23,7 @@ export async function withdrawAction(_prev: { error?: string } | null, formData:
       coins: Number(formData.get("coins")),
       upiId: String(formData.get("upiId") ?? ""),
     });
-    revalidatePath("/wallet");
+    revalidatePath("/inventory");
     return { ok: true };
   } catch (error) {
     return { error: toErrorMessage(error) };

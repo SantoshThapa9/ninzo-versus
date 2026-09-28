@@ -11,7 +11,7 @@ export default async function EventsPage() {
   const events = await listPublicEvents();
   return (
     <div className="grid gap-4">
-      <h1 className="text-2xl font-bold">Hosted events</h1>
+      <h1 className="text-2xl font-bold">Competitive esports tournaments</h1>
       {events.length === 0 ? (
         <p className="text-sm text-[var(--muted)]">Nothing published yet.</p>
       ) : (
@@ -23,8 +23,11 @@ export default async function EventsPage() {
                 <Badge>{event.status}</Badge>
               </div>
               <p className="mt-1 text-sm text-[var(--muted)]">
-                {new Date(event.eventDate).toLocaleString("en-IN")} • {event.format} •{" "}
-                {event.entryFeeCoins} NV
+                {new Date(event.eventDate).toLocaleDateString("en-IN")} • {event.format} •{" "}
+                Match registration: {event.entryFeeCoins} NV Tokens
+              </p>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                Current prize pool: {event.reservedSlots * event.entryFeeCoins} NV Tokens
               </p>
             </Card>
           </Link>

@@ -11,7 +11,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  gap: 16px;
+  padding: 14px max(16px, env(safe-area-inset-left)) 14px max(16px, env(safe-area-inset-right));
   background: rgba(7, 8, 12, 0.8);
   backdrop-filter: blur(18px);
   border-bottom: 1px solid $line;
@@ -32,8 +33,25 @@
   color: $accent-2;
 }
 
+.meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
+}
+
 .main {
   width: min(720px, 100%);
   margin: 0 auto;
-  padding: 16px 16px calc($nav-height + 24px);
+  padding: 16px max(16px, env(safe-area-inset-left)) calc($nav-height + 24px) max(16px, env(safe-area-inset-right));
+}
+
+@media (min-width: 720px) {
+  .header {
+    padding-inline: 24px;
+  }
+
+  .main {
+    padding-inline: 24px;
+  }
 }

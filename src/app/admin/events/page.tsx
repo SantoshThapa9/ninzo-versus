@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { UserRole, EventStatus } from "@/types/enums";
+import { UserRole } from "@/types/enums";
 import { connectDb } from "@/lib/db/mongoose";
 import { eventRepository } from "@/repositories/event.repository";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { eventStatusAction } from "@/app/actions/event";
 
 export default async function AdminEventsPage() {
   const session = await auth();
@@ -31,19 +30,11 @@ export default async function AdminEventsPage() {
             </Link>
             <Badge>{event.status}</Badge>
           </div>
-          <form action={eventStatusAction} className="mt-3 flex gap-2">
-            <input type="hidden" name="eventId" value={String(event._id)} />
-            <select name="status" className="h-11 flex-1 rounded-xl border border-white/10 bg-black/30 px-3">
-              {Object.values(EventStatus).map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-            <Button type="submit" size="sm">
-              Update
+          <div className="mt-3">
+            <Button asChild size="sm">
+              <Link href={`/admin/events/${String(event._id)}`}>Manage event</Link>
             </Button>
-          </form>
+          </div>
         </Card>
       ))}
     </div>

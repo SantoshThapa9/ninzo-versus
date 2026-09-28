@@ -20,12 +20,12 @@ export async function createDepositOrder(userId: string, coins: number) {
   const settings = await getPlatformSettings();
   if (coins < settings.minDepositCoins) {
     throw new AppError(
-      `Minimum deposit is ${settings.minDepositCoins} NV Coins.`,
+      `Minimum NV Token purchase is ${settings.minDepositCoins} NV Tokens.`,
       "MIN_DEPOSIT",
     );
   }
   if (coins % 1 !== 0) {
-    throw new AppError("NV Coins must be a whole number.", "INVALID_COINS");
+    throw new AppError("NV Tokens must be a whole number.", "INVALID_COINS");
   }
 
   const rupees = coinsToRupees(coins, settings.nvCoinsPerRupee);

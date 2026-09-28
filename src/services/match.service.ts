@@ -52,7 +52,7 @@ export async function createClashMatch(userId: string, raw: unknown) {
   const input = createMatchSchema.parse(raw);
   if (input.stakeMax < input.stakeMin) {
     throw new AppError(
-      "Stake max must be greater than or equal to stake min.",
+      "Maximum match registration must be greater than or equal to the minimum.",
       "INVALID_STAKE",
     );
   }
@@ -87,7 +87,7 @@ export async function createClashMatch(userId: string, raw: unknown) {
     }
     if (user.availableCoins < input.stakeMax) {
       throw new AppError(
-        "Not enough NV Coins to lock the maximum stake.",
+        "Not enough NV Tokens for the selected match registration.",
         "INSUFFICIENT_FUNDS",
       );
     }
@@ -177,7 +177,7 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
     }
     if (input.stake < match.stakeMin || input.stake > match.stakeMax) {
       throw new AppError(
-        "Accepted stake must be inside the posted range.",
+        "Match registration must be inside the posted range.",
         "STAKE_OUT_OF_RANGE",
       );
     }
@@ -191,7 +191,7 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
     }
     if (user.availableCoins < input.stake) {
       throw new AppError(
-        "Not enough NV Coins to lock this stake.",
+        "Not enough NV Tokens for this match registration.",
         "INSUFFICIENT_FUNDS",
       );
     }

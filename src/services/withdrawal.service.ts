@@ -20,7 +20,7 @@ export async function requestWithdrawal(userId: string, raw: unknown) {
   const settings = await getPlatformSettings();
   if (input.coins < settings.minWithdrawalCoins) {
     throw new AppError(
-      `Minimum withdrawal is ${settings.minWithdrawalCoins} NV Coins.`,
+      `Minimum reward redemption is ${settings.minWithdrawalCoins} NV Tokens.`,
       "MIN_WITHDRAWAL",
     );
   }
@@ -30,7 +30,7 @@ export async function requestWithdrawal(userId: string, raw: unknown) {
     const user = await userRepository.findById(userId, session);
     if (!user) throw new AppError("User not found.", "NOT_FOUND", 404);
     if (user.lastWithdrawalAt && user.lastWithdrawalAt >= todayUtcStart()) {
-      throw new AppError("Only one withdrawal request is allowed per day.", "DAILY_LIMIT");
+      throw new AppError("Only one reward redemption request is allowed per day.", "DAILY_LIMIT");
     }
 
     const withdrawal = await withdrawalRepository.create(
@@ -71,13 +71,13 @@ export async function reviewWithdrawal(
 ) {
   await connectDb();
   const withdrawal = await withdrawalRepository.findById(withdrawalId);
-  if (!withdrawal) throw new AppError("Withdrawal not found.", "NOT_FOUND", 404);
+  if (!withdrawal) throw new AppError("Reward redemption request not found.", "NOT_FOUND", 404);
 
   if (action === "reject") {
     await withTransaction(async (session) => {
       const fresh = await withdrawalRepository.findById(withdrawalId, session);
       if (!fresh || fresh.status !== WithdrawalStatus.PENDING) {
-        throw new AppError("Withdrawal cannot be rejected.", "INVALID_STATUS");
+        throw new AppError("Reward redemption request cannot be declined.", "INVALID_STATUS");
       }
       fresh.status = WithdrawalStatus.REJECTED;
       fresh.adminNote = note;

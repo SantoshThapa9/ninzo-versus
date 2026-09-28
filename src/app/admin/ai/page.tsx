@@ -28,7 +28,7 @@ export default async function AdminAiPage() {
           />
         </div>
         <div>
-          <Label htmlFor="depositFeePercent">Deposit processing fee %</Label>
+          <Label htmlFor="depositFeePercent">NV Token purchase processing fee %</Label>
           <Input
             id="depositFeePercent"
             name="depositFeePercent"
@@ -37,11 +37,11 @@ export default async function AdminAiPage() {
           />
         </div>
         <div>
-          <Label htmlFor="minDepositCoins">Min deposit NV</Label>
+          <Label htmlFor="minDepositCoins">Minimum NV Token purchase</Label>
           <Input id="minDepositCoins" name="minDepositCoins" type="number" defaultValue={settings.minDepositCoins} />
         </div>
         <div>
-          <Label htmlFor="minWithdrawalCoins">Min withdrawal NV</Label>
+          <Label htmlFor="minWithdrawalCoins">Minimum reward redemption (NV Tokens)</Label>
           <Input
             id="minWithdrawalCoins"
             name="minWithdrawalCoins"

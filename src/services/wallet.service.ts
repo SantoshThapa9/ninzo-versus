@@ -28,7 +28,7 @@ export async function applyLedger(input: LedgerInput) {
   const available = user.availableCoins + input.availableDelta;
   const locked = user.lockedCoins + input.lockedDelta;
   if (available < 0 || locked < 0) {
-    throw new AppError("Insufficient NV Coins.", "INSUFFICIENT_FUNDS");
+    throw new AppError("Insufficient NV Tokens for match registration.", "INSUFFICIENT_FUNDS");
   }
 
   user.availableCoins = available;

@@ -13,13 +13,13 @@ export default async function AdminWalletsPage() {
 
   return (
     <div className="grid gap-3">
-      <h1 className="text-2xl font-bold">Wallets</h1>
+      <h1 className="text-2xl font-bold">Player inventories</h1>
       {users.map((user) => (
         <Card key={String(user._id)}>
           <p className="font-bold">{user.displayName}</p>
           <p className="text-sm text-[var(--muted)]">{user.email}</p>
           <p className="mt-1 text-sm">
-            Available {user.availableCoins} • Locked {user.lockedCoins} • {user.role}
+            Available {user.availableCoins} NV Tokens • Reserved {user.lockedCoins} NV Tokens • {user.role}
           </p>
         </Card>
       ))}

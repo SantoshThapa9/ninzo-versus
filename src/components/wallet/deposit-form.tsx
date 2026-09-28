@@ -45,7 +45,7 @@ export function DepositForm({ minCoins, coinsPerRupee, feePercent }: {
         currency: "INR",
         order_id: order.orderId,
         name: "Ninzo Versus",
-        description: `${order.coins} NV Coins`,
+        description: `Purchasing NV Tokens for Match Entry: ${order.coins} NV Tokens`,
         handler: async (response: {
           razorpay_order_id: string;
           razorpay_payment_id: string;
@@ -61,14 +61,14 @@ export function DepositForm({ minCoins, coinsPerRupee, feePercent }: {
       });
       razorpay.open();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Deposit failed");
+      setError(err instanceof Error ? err.message : "NV Token purchase could not be completed");
     }
   }
 
   return (
     <div className="grid gap-3">
       <div>
-        <Label htmlFor="coins">NV Coins</Label>
+        <Label htmlFor="coins">NV Tokens</Label>
         <Input
           id="coins"
           type="number"
@@ -79,12 +79,12 @@ export function DepositForm({ minCoins, coinsPerRupee, feePercent }: {
       </div>
       <p className="text-sm text-[var(--muted)]">
         {feePercent > 0
-          ? `You receive ${coins} NV Coins. Processing fee ${feePercent}% (₹${fee.toFixed(2)}). Pay ₹${total.toFixed(2)}.`
-          : `You receive ${coins} NV Coins. No deposit fee. Pay ₹${rupees.toFixed(2)}.`}
+          ? `Purchasing NV Tokens for Match Entry: ${coins} NV Tokens. Processing fee ${feePercent}% (₹${fee.toFixed(2)}). Total ₹${total.toFixed(2)}.`
+          : `Purchasing NV Tokens for Match Entry: ${coins} NV Tokens. Total ₹${rupees.toFixed(2)}.`}
       </p>
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
       <Button type="button" size="full" onClick={pay}>
-        Pay with Razorpay
+        Purchase NV Tokens for Match Entry
       </Button>
     </div>
   );

@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { EventBuilderForm } from "@/components/admin/event-builder-form";
 import { eventRoomAction, eventStatusAction, payPrizesAction } from "@/app/actions/event";
 
+const workflowStatuses = [EventStatus.PUBLISHED, EventStatus.LIVE, EventStatus.CANCELLED];
+
 export default async function AdminEventDetailPage({ params }: PageProps<"/admin/events/[id]">) {
   const session = await auth();
   if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
@@ -27,7 +29,7 @@ export default async function AdminEventDetailPage({ params }: PageProps<"/admin
         <form action={eventStatusAction} className="flex gap-2">
           <input type="hidden" name="eventId" value={id} />
           <select name="status" defaultValue={event.status} className="h-11 flex-1 rounded-xl border border-white/10 bg-black/30 px-3">
-            {Object.values(EventStatus).map((status) => (
+            {workflowStatuses.map((status) => (
               <option key={status} value={status}>
                 {status.replaceAll("_", " ")}
               </option>
@@ -37,13 +39,14 @@ export default async function AdminEventDetailPage({ params }: PageProps<"/admin
         </form>
       </Card>
       <Card>
-        <h2 className="mb-3 font-bold">Room settings (private)</h2>
+        <h2 className="mb-3 font-bold">Room settings</h2>
+        <p className="mb-3 text-sm text-[var(--muted)]">Saving both fields makes the event live, closes registration, and shares the details with all signed-in users.</p>
         <form action={eventRoomAction} className="grid gap-2">
           <input type="hidden" name="eventId" value={id} />
           <Label htmlFor="roomId">Room ID</Label>
           <Input id="roomId" name="roomId" defaultValue={event.roomId ?? ""} />
           <Label htmlFor="roomPassword">Password</Label>
-          <Input id="roomPassword" name="roomPassword" type="password" defaultValue={event.roomPassword ?? ""} />
+          <Input id="roomPassword" name="roomPassword" defaultValue={event.roomPassword ?? ""} />
           <Button type="submit" size="sm">
             Save room
           </Button>
@@ -58,7 +61,7 @@ export default async function AdminEventDetailPage({ params }: PageProps<"/admin
         ))}
       </Card>
       <Card>
-        <h2 className="mb-3 font-bold">Prize payout (admin only)</h2>
+        <h2 className="mb-3 font-bold">Esports reward fulfillment (admin only)</h2>
         <form action={payPrizesAction} className="grid gap-2">
           <input type="hidden" name="eventId" value={id} />
           {[1, 2, 3].map((place) => (
@@ -85,15 +88,12 @@ export default async function AdminEventDetailPage({ params }: PageProps<"/admin
             name: event.name,
             eventDate: event.eventDate,
             startTime: event.startTime,
-            registrationOpensAt: event.registrationOpensAt,
-            registrationClosesAt: event.registrationClosesAt,
             format: event.format,
             maxSlots: event.maxSlots,
             entryFeeCoins: event.entryFeeCoins,
             prizeDistribution: event.prizeDistribution,
             characterSkill: event.characterSkill,
             unlimitedGlooWall: event.unlimitedGlooWall,
-            roomRules: event.roomRules,
             customNotes: event.customNotes,
           }}
         />

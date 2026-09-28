@@ -52,10 +52,6 @@ export default async function ClashDetailPage({
     player: { userId: string; ign: string; uid: string } | undefined,
   ) =>
     `${player?.userId === session.user.id ? "You" : (player?.ign ?? "Player")} (${player?.uid ?? "UID not set"})`;
-  const acceptedPool = match.acceptedStake ? match.acceptedStake * 2 : 0;
-  const winnerPrize =
-    acceptedPool - Math.round((acceptedPool * match.platformFeePercent) / 100);
-
   return (
     <div className="mx-auto grid w-full max-w-2xl gap-4">
       <Card>
@@ -68,8 +64,8 @@ export default async function ClashDetailPage({
         <p className="mt-2 text-sm text-[var(--muted)]">{match.rules}</p>
         <p className="mt-3 break-words text-sm">
           {match.stakeMin === match.stakeMax
-            ? `Stake ${match.stakeMin} NV each`
-            : `Stake range ${match.stakeMin}–${match.stakeMax} NV each`}{" "}
+            ? `Match registration: ${match.stakeMin} NV Tokens each`
+            : `Match registration range: ${match.stakeMin}–${match.stakeMax} NV Tokens each`}{" "}
           <span className="hidden sm:inline">•</span>
           <span className="block sm:inline">
             {" "}
@@ -78,8 +74,8 @@ export default async function ClashDetailPage({
         </p>
         {match.acceptedStake ? (
           <p className="mt-2 text-sm">
-            Stake {match.acceptedStake} NV each • Prize pool {acceptedPool} NV •
-            Winner receives {winnerPrize} NV
+            Registered with {match.acceptedStake} NV Tokens each • Final result
+            verification determines eligible esports rewards.
           </p>
         ) : null}
       </Card>
@@ -101,15 +97,15 @@ export default async function ClashDetailPage({
         <Card>
           <h2 className="mb-1 font-bold">Accept challenge</h2>
           <p className="mb-4 text-sm text-[var(--muted)]">
-            Your selected stake is locked as soon as you accept.
+            Your selected match registration is reserved as soon as you accept.
           </p>
           <ActionForm
             action={acceptMatchAction}
-            submitLabel="Lock accepted stake"
+            submitLabel="Register for match"
           >
             <input type="hidden" name="matchId" value={id} />
             <div>
-              <Label htmlFor="stake">Your stake (NV)</Label>
+              <Label htmlFor="stake">Your match registration (NV Tokens)</Label>
               <Input
                 id="stake"
                 name="stake"
