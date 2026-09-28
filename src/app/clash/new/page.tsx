@@ -15,12 +15,23 @@ export default async function NewClashPage() {
 
   return (
     <Card>
-      <h1 className="mb-3 text-2xl font-bold">Create a competitive challenge</h1>
-      <p className="mb-4 text-sm text-[var(--danger)]">{settings.clashWarning}</p>
-      <ActionForm action={createMatchAction} submitLabel="Register challenge with NV Tokens">
+      <h1 className="mb-3 text-2xl font-bold">
+        Create a competitive challenge
+      </h1>
+      <p className="mb-4 text-sm text-[var(--danger)]">
+        {settings.clashWarning}
+      </p>
+      <ActionForm
+        action={createMatchAction}
+        submitLabel="Register challenge with NV Tokens"
+      >
         <div>
           <Label htmlFor="format">Team size</Label>
-          <select id="format" name="format" className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3">
+          <select
+            id="format"
+            name="format"
+            className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3"
+          >
             {CLASH_DEFAULTS.teamSizes.map((size) => (
               <option key={size} value={size}>
                 {size}v{size}
@@ -29,27 +40,48 @@ export default async function NewClashPage() {
           </select>
         </div>
         <div>
-          <Label htmlFor="stakeMin">Match registration range (NV Tokens) — minimum 10</Label>
-          <Input id="stakeMin" name="stakeMin" type="number" min={ECONOMY_DEFAULTS.minMatchStakeCoins} required />
+          <Label htmlFor="stakeMin">
+            Minimum Challenge (NV Tokens) — minimum 5
+          </Label>
+          <Input
+            id="stakeMin"
+            name="stakeMin"
+            type="number"
+            min={ECONOMY_DEFAULTS.minMatchStakeCoins}
+            required
+          />
         </div>
         <div>
-          <Label htmlFor="stakeMax">Maximum match registration (NV Tokens)</Label>
-          <Input id="stakeMax" name="stakeMax" type="number" min={ECONOMY_DEFAULTS.minMatchStakeCoins} required />
+          <Label htmlFor="stakeMax">Maximum Challenge (NV Tokens)</Label>
+          <Input
+            id="stakeMax"
+            name="stakeMax"
+            type="number"
+            min={ECONOMY_DEFAULTS.minMatchStakeCoins}
+            required
+          />
         </div>
-        <p className="text-sm text-[var(--muted)]">Your saved In Game Name and UID from your profile will be used for this match.</p>
+        <p className="text-sm text-[var(--muted)]">
+          Your saved In Game Name and UID from your profile will be used for
+          this match.
+        </p>
         <div className="space-y-2 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" name="onlyHeadshots" className="mt-0.5" />
             Only headshots allowed
           </label>
           <label className="flex items-center gap-2">
-            <input type="checkbox" name="characterSkillAllowed" className="mt-0.5" />
+            <input
+              type="checkbox"
+              name="characterSkillAllowed"
+              className="mt-0.5"
+            />
             Character skill allowed
           </label>
         </div>
         <label className="flex items-start gap-2 text-sm">
-          <input type="checkbox" name="warning" required className="mt-1" />
-          I checked the custom-room settings and agree to follow the match rules.
+          <input type="checkbox" name="warning" required className="mt-1" />I
+          checked the custom-room settings and agree to follow the match rules.
         </label>
       </ActionForm>
     </Card>

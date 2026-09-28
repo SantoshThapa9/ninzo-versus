@@ -20,6 +20,7 @@ import { deletePrivateMedia } from "@/services/media.service";
 import {
   auditRepository,
   resultRepository,
+  verifiedRoomIdRepository,
 } from "@/repositories/ops.repository";
 import { CoinTxnType, EvidenceKind, MatchStatus } from "@/types/enums";
 import {
@@ -439,6 +440,34 @@ export async function submitMatchEvidence(
     );
   }
 
+  // A room ID enters the permanent registry only when a match is settled.
+  // Checking it here prevents an old final-result image from being accepted as
+  // evidence for a new match.
+  const previouslyVerifiedRoom = await verifiedRoomIdRepository.find(
+    analysis.roomId,
+  );
+  if (previouslyVerifiedRoom) {
+    console.warn("[match-ai] Screenshot rejected: room ID was already used.", {
+      matchId,
+      userId,
+      roomId: analysis.roomId,
+      verifiedMatchId: String(previouslyVerifiedRoom.matchId),
+    });
+    try {
+      await deletePrivateMedia(blobPathname);
+    } catch {
+      console.error("[match-ai] Could not remove reused screenshot upload.", {
+        matchId,
+        userId,
+      });
+    }
+    throw new AppError(
+      "This Custom Room ID was already used in a completed match. Do not upload an old game screenshot; your account may be banned. Please upload the current match's final-result screenshot again.",
+      "REUSED_ROOM_ID_REUPLOAD_REQUIRED",
+      422,
+    );
+  }
+
   const submission = await resultRepository.create({
     matchId,
     userId,
@@ -548,10 +577,11 @@ export async function finalizeMatchEvidence(matchId: string) {
         const b = normalizeRoomId(right);
         return Boolean(a && b && a === b);
       };
+      // Confidence is useful for observability, but it is not reliable enough
+      // to override two matching extractions and the dedicated final validator.
       const complete = (result?: VisionResult) =>
         Boolean(
           result &&
-          (result.confidence ?? 0) >= 0.8 &&
           normalizeRoomId(result.roomId) &&
           result.winnerIGN?.trim(),
         );
@@ -589,10 +619,12 @@ export async function finalizeMatchEvidence(matchId: string) {
         creator: {
           roomId: creatorResult?.roomId,
           winnerIGN: creatorResult?.winnerIGN,
+          confidence: creatorResult?.confidence ?? null,
         },
         opponent: {
           roomId: opponentResult?.roomId,
           winnerIGN: opponentResult?.winnerIGN,
+          confidence: opponentResult?.confidence ?? null,
         },
         snapshotPlayers: { creatorIgn, opponentIgn },
         checks: {
@@ -619,7 +651,36 @@ export async function finalizeMatchEvidence(matchId: string) {
           "[match-ai] Results agree; automatically settling the match.",
           { matchId, winnerTeam },
         );
-        await adminSettleMatch(undefined, matchId, winnerTeam);
+        try {
+          await adminSettleMatch(
+            undefined,
+            matchId,
+            winnerTeam,
+            normalizeRoomId(creatorResult.roomId),
+          );
+        } catch (error) {
+          if (
+            error instanceof AppError &&
+            error.code === "REUSED_ROOM_ID"
+          ) {
+            claimed.aiWinnerRecommendation = "held for reused room ID review";
+            claimed.aiAnalysis = {
+              individual: [creatorResult, opponentResult],
+              final: validation,
+              verification: "room ID already verified for another match",
+            };
+            claimed.provisionalResult = "HOLD";
+            claimed.status = MatchStatus.DISPUTED;
+            claimed.completedAt = new Date();
+            await claimed.save();
+            console.warn(
+              "[match-ai] Settlement blocked: room ID was already verified.",
+              { matchId, roomId: normalizeRoomId(creatorResult.roomId) },
+            );
+            return;
+          }
+          throw error;
+        }
       } else {
         claimed.aiWinnerRecommendation = "held for admin review";
         claimed.aiAnalysis = {
@@ -800,6 +861,7 @@ export async function adminSettleMatch(
   adminId: string | undefined,
   matchId: string,
   winnerTeam: "A" | "B" | "DRAW",
+  verifiedRoomId?: string,
 ) {
   await connectDb();
   return withTransaction(async (session) => {
@@ -810,6 +872,30 @@ export async function adminSettleMatch(
     }
     if (!match.acceptedStake || !match.opponentCaptainId) {
       throw new AppError("Match is not ready to settle.", "NOT_READY");
+    }
+    if (verifiedRoomId) {
+      try {
+        // This write is in the same transaction as settlement, so a room ID is
+        // never retained for a match that did not actually complete.
+        await verifiedRoomIdRepository.create(
+          { roomId: verifiedRoomId, matchId },
+          session,
+        );
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === 11000
+        ) {
+          throw new AppError(
+            "This Custom Room ID has already been verified for another completed match.",
+            "REUSED_ROOM_ID",
+            409,
+          );
+        }
+        throw error;
+      }
     }
 
     const participantIds = [

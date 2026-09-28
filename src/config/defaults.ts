@@ -1,8 +1,8 @@
 export const ECONOMY_OVERRIDES = {
   nvCoinsPerRupee: 1,
-  minDepositCoins: 20,
-  minWithdrawalCoins: 20,
-  minMatchStakeCoins: 10,
+  minDepositCoins: 10,
+  minWithdrawalCoins: 10,
+  minMatchStakeCoins: 5,
   depositFeePercent: 0,
   withdrawalFeePercent: 0,
   platformFeePercent: 5,
@@ -19,6 +19,7 @@ export function getEconomyConfig() {
     nvCoinsPerRupee: ECONOMY_OVERRIDES.nvCoinsPerRupee,
     minDepositCoins: ECONOMY_OVERRIDES.minDepositCoins,
     minWithdrawalCoins: ECONOMY_OVERRIDES.minWithdrawalCoins,
+    minMatchStakeCoins: ECONOMY_OVERRIDES.minMatchStakeCoins,
     depositFeePercent: ECONOMY_OVERRIDES.depositFeePercent,
     withdrawalFeePercent: ECONOMY_OVERRIDES.withdrawalFeePercent,
     platformFeePercent: ECONOMY_OVERRIDES.platformFeePercent,
@@ -33,7 +34,7 @@ export const MEDIA_DEFAULTS = {
 } as const;
 
 export const CLASH_DEFAULTS = {
-  teamSizes: [1, 2, 3, 4, 5, 6] as const,
+  teamSizes: [1] as const,
   warning:
     "Check the custom-room settings carefully. Intentionally changing room settings before the match may result in investigation and account penalties.",
 };

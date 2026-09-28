@@ -127,7 +127,7 @@ export async function analyzeMatchScreenshot(
               roomId: {
                 type: "string",
                 description:
-                  "Exactly the seven digits before # in the Custom Room ID, or an empty string if unreadable.",
+                  "A verbatim, digit-by-digit transcription of exactly the seven digits immediately before # in the bottom-left Custom Room ID. Never infer, correct, reorder, or substitute digits; return an empty string if any digit or the # delimiter is unclear.",
               },
               winnerIgn: {
                 type: "string",
@@ -147,7 +147,17 @@ export async function analyzeMatchScreenshot(
           content: [
             {
               type: "input_text",
-              text: 'Analyze only this Free Fire final-result screenshot and return pure JSON: {"roomId":"","winnerIgn":"","confidence":0}. Read the Custom Room ID only from the bottom-left corner and ignore FPS, icons, overlays, and every other text. Extract ONLY the 7 alphanumeric characters immediately before \'#\' as roomId (never include \'#\' or anything after it). Extract winnerIgn only from the winning player\'s NAME row; WARBRINGERS and HOWLERS are permanent team names and must never be returned. If a value is unreadable, return an empty string and lower confidence.',
+              text: `Analyze only this Free Fire final-result screenshot and return JSON matching the supplied schema.
+
+Custom Room ID procedure:
+1. Locate the Custom Room ID in the bottom-left corner only. Ignore every other number on the screen, including FPS, timers, scores, icons, overlays, and text outside that label.
+2. Find the # delimiter in that bottom-left value. Read the seven digits immediately to its left, one digit at a time, from left to right. The roomId is those seven digits only; never include # or anything after it.
+3. Transcribe what is visibly shown. Do not guess, autocorrect, infer a likely room ID, reorder digits, or replace one digit with a similar-looking digit (especially 0/3, 0/8, 1/7, 5/6, and 2/7).
+4. Before returning, verify that the seven returned digits are directly adjacent to # in the image. If any digit or # is obscured, blurry, clipped, or ambiguous, return roomId as "" and set confidence no higher than 0.4.
+
+Winner procedure: extract winnerIgn only from the winning player's NAME row. WARBRINGERS and HOWLERS are permanent team names, never player IGNs. If the winner IGN is unreadable, return an empty string and lower confidence.
+
+Do not explain your work or return Markdown.`,
             },
             { type: "input_image", image_url: imageUrl, detail: "high" },
           ],

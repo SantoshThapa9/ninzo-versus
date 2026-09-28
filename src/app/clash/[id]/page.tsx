@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { acceptMatchAction } from "@/app/actions/match";
 import { MatchChat } from "@/components/match/match-chat";
 import { UserRole } from "@/types/enums";
+import { ShieldCheck, Swords } from "lucide-react";
 
 export default async function ClashDetailPage({
   params,
@@ -53,15 +54,19 @@ export default async function ClashDetailPage({
   ) =>
     `${player?.userId === session.user.id ? "You" : (player?.ign ?? "Player")} (${player?.uid ?? "UID not set"})`;
   return (
-    <div className="mx-auto grid w-full max-w-2xl gap-4">
-      <Card>
+    <div className="mx-auto grid w-full max-w-2xl gap-4 pb-2">
+      <Card className="relative overflow-hidden border-white/15 bg-transparent p-0">
+        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('/cs.png')" }} />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#070a10]/95 via-[#070a10]/82 to-[#070a10]/50" />
+        <div className="relative p-5 text-white sm:p-6">
+          <div className="mb-4 flex items-center gap-2 text-[var(--accent-2)]"><Swords size={17} /><p className="text-xs font-bold uppercase tracking-[0.16em]">Clash arena</p></div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold">
+          <h1 className="text-3xl font-black tracking-tight">
             {match.format}v{match.format}
           </h1>
-          <Badge>{match.status}</Badge>
+          <Badge className="border border-[var(--accent-2)]/25 bg-[var(--accent-2)]/15">{match.status}</Badge>
         </div>
-        <p className="mt-2 text-sm text-[var(--muted)]">{match.rules}</p>
+        <p className="mt-3 text-sm leading-6 text-white/70">{match.rules}</p>
         <p className="mt-3 break-words text-sm">
           {match.stakeMin === match.stakeMax
             ? `Match registration: ${match.stakeMin} NV Tokens each`
@@ -78,9 +83,10 @@ export default async function ClashDetailPage({
             verification determines eligible esports rewards.
           </p>
         ) : null}
+        </div>
       </Card>
-      <Card>
-        <h2 className="mb-2 font-bold">Match rules</h2>
+      <Card className="border-white/10">
+        <div className="mb-3 flex items-center gap-2"><ShieldCheck size={18} className="text-[var(--accent-2)]" /><h2 className="font-bold">Match rules</h2></div>
         <ul className="list-disc space-y-1 pl-5 text-sm leading-6 text-[var(--muted)]">
           <li>
             Use only the agreed custom-room settings and follow the rules above.

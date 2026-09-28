@@ -5,6 +5,8 @@ import { DisputeModel } from "@/models/dispute";
 import { ResultSubmissionModel } from "@/models/result-submission";
 import { AuditLogModel } from "@/models/audit-log";
 import { AIConfigurationModel } from "@/models/ai-configuration";
+import { VerifiedRoomIdModel } from "@/models/verified-room-id";
+import type { ClientSession } from "mongoose";
 import type { ReportType, SupportStatus, TicketSender, EvidenceKind } from "@/types/enums";
 
 export const supportRepository = {
@@ -71,6 +73,20 @@ export const resultRepository = {
   },
   deleteManyForMatch(matchId: string) {
     return ResultSubmissionModel.deleteMany({ matchId });
+  },
+};
+
+export const verifiedRoomIdRepository = {
+  find(roomId: string) {
+    return VerifiedRoomIdModel.findOne({ roomId }).lean();
+  },
+  create(
+    data: { roomId: string; matchId: string },
+    session?: ClientSession,
+  ) {
+    return VerifiedRoomIdModel.create([data], { session }).then(
+      ([record]) => record,
+    );
   },
 };
 
