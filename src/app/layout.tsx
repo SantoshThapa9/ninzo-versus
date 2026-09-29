@@ -41,12 +41,14 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "Ninzo Versus",
     title: "Ninzo Versus | Garena Free Fire MAX Tournaments & Esports",
-    description: "Free Garena Free Fire MAX tournaments, esports challenges, and competitive 1v1 matches for players in India.",
+    description:
+      "Free Garena Free Fire MAX tournaments, esports challenges, and competitive 1v1 matches for players in India.",
   },
   twitter: {
     card: "summary_large_image",
     title: "Ninzo Versus | Garena Free Fire MAX Tournaments & Esports",
-    description: "Free Garena Free Fire MAX tournaments, esports challenges, and competitive 1v1 matches for players in India.",
+    description:
+      "Free Garena Free Fire MAX tournaments, esports challenges, and competitive 1v1 matches for players in India.",
   },
   robots: {
     index: true,

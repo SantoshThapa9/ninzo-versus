@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "driver.js/dist/driver.css";
 
 :root {
   --background: #07080c;
@@ -40,4 +41,24 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+.ninzo-tour-popover {
+  --driver-popover-bg: #151924;
+  --driver-popover-color: #f4f1ea;
+  --driver-popover-border-radius: 14px;
+  --driver-popover-border: 1px solid rgba(255, 106, 0, 0.35);
+  --driver-popover-padding: 16px;
+}
+
+.ninzo-tour-popover .driver-popover-title { color: var(--accent); }
+.ninzo-tour-popover .driver-popover-description,
+.ninzo-tour-popover .driver-popover-progress-text { color: var(--muted); }
+.ninzo-tour-popover .driver-popover-next-btn,
+.ninzo-tour-popover .driver-popover-prev-btn {
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #080808;
+  text-shadow: none;
 }

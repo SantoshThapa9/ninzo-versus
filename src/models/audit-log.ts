@@ -12,7 +12,6 @@ const AuditLogSchema = new Schema(
 );
 
 AuditLogSchema.index({ createdAt: -1 });
-AuditLogSchema.index({ entityType: 1, entityId: 1 });
 
 export type AuditLogDoc = InferSchemaType<typeof AuditLogSchema> & { _id: Types.ObjectId };
 

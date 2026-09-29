@@ -24,6 +24,10 @@ export default async function SupportPage() {
 
       <SupportChatbot />
 
+      <p className="text-sm text-[var(--muted)]">
+        AI chat is private to this conversation and does not create a support ticket. To contact the support team, select Report an issue.
+      </p>
+
       <div>
         <h2 className="mb-2 text-lg font-bold">Recent tickets</h2>
         {tickets.length === 0 ? (

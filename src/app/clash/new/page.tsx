@@ -48,6 +48,7 @@ export default async function NewClashPage() {
             name="stakeMin"
             type="number"
             min={ECONOMY_DEFAULTS.minMatchStakeCoins}
+            step="0.01"
             required
           />
         </div>
@@ -58,6 +59,7 @@ export default async function NewClashPage() {
             name="stakeMax"
             type="number"
             min={ECONOMY_DEFAULTS.minMatchStakeCoins}
+            step="0.01"
             required
           />
         </div>

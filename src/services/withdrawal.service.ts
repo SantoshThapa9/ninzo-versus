@@ -2,6 +2,7 @@ import { z } from "zod";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { todayUtcStart } from "@/lib/utils";
+import { isValidTokenAmount } from "@/lib/utils";
 import { withdrawalRepository } from "@/repositories/finance.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { applyLedger } from "@/services/wallet.service";
@@ -11,7 +12,9 @@ import { CoinTxnType, WithdrawalStatus } from "@/types/enums";
 import { WithdrawalModel } from "@/models/withdrawal";
 
 const requestSchema = z.object({
-  coins: z.number().int().positive(),
+  coins: z.number().positive().refine(isValidTokenAmount, {
+    message: "NV Tokens can have up to two decimal places.",
+  }),
   upiId: z.string().min(5),
 });
 

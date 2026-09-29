@@ -3,6 +3,7 @@ import { SupportMessageModel } from "@/models/support-message";
 import { SupportEvidenceModel } from "@/models/support-evidence";
 import { DisputeModel } from "@/models/dispute";
 import { ResultSubmissionModel } from "@/models/result-submission";
+import { MatchEvidenceAttemptModel } from "@/models/match-evidence-attempt";
 import { AuditLogModel } from "@/models/audit-log";
 import { AIConfigurationModel } from "@/models/ai-configuration";
 import { VerifiedRoomIdModel } from "@/models/verified-room-id";
@@ -12,11 +13,13 @@ import type { ReportType, SupportStatus, TicketSender, EvidenceKind } from "@/ty
 export const supportRepository = {
   createTicket(data: {
     userId: string;
+    source: "manual";
     category: ReportType;
     summary: string;
     matchId?: string;
     freeFireUid?: string;
     ign?: string;
+    whatsappNumber?: string;
   }) {
     return SupportTicketModel.create(data);
   },
@@ -24,10 +27,10 @@ export const supportRepository = {
     return SupportTicketModel.findById(id);
   },
   listForUser(userId: string) {
-    return SupportTicketModel.find({ userId }).sort({ updatedAt: -1 }).lean();
+    return SupportTicketModel.find({ userId, source: "manual" }).sort({ updatedAt: -1 }).lean();
   },
   listAdmin(status?: SupportStatus) {
-    return SupportTicketModel.find(status ? { status } : {})
+    return SupportTicketModel.find({ source: "manual", ...(status ? { status } : {}) })
       .sort({ updatedAt: -1 })
       .lean();
   },
@@ -37,13 +40,16 @@ export const supportRepository = {
   listMessages(ticketId: string) {
     return SupportMessageModel.find({ ticketId }).sort({ createdAt: 1 }).lean();
   },
+  listEvidence(ticketId: string) {
+    return SupportEvidenceModel.find({ ticketId }).sort({ createdAt: 1 }).lean();
+  },
   addEvidence(data: {
     ticketId: string;
     userId: string;
     mediaUrl: string;
     blobPathname: string;
     mimeType: string;
-    kind: "image" | "video";
+    kind: "image";
     expiresAt?: Date;
   }) {
     return SupportEvidenceModel.create(data);
@@ -73,6 +79,15 @@ export const resultRepository = {
   },
   deleteManyForMatch(matchId: string) {
     return ResultSubmissionModel.deleteMany({ matchId });
+  },
+};
+
+export const evidenceAttemptRepository = {
+  recordFailure(data: { matchId: string; userId: string; reason: string }) {
+    return MatchEvidenceAttemptModel.create(data);
+  },
+  countFailures(matchId: string, userId: string) {
+    return MatchEvidenceAttemptModel.countDocuments({ matchId, userId });
   },
 };
 

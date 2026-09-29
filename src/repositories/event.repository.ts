@@ -25,6 +25,11 @@ export const eventRepository = {
   listAll(filter: Record<string, unknown> = {}) {
     return HostedEventModel.find(filter).sort({ createdAt: -1 }).lean();
   },
+  listCompleted() {
+    return HostedEventModel.find({ status: EventStatus.COMPLETED })
+      .sort({ eventDate: -1, createdAt: -1 })
+      .lean();
+  },
   addTeam(
     data: {
       eventId: string;
@@ -42,5 +47,13 @@ export const eventRepository = {
   },
   listTeams(eventId: string) {
     return HostedTeamModel.find({ eventId }).sort({ slotNumber: 1 }).lean();
+  },
+  listPlacedTeams(eventIds: string[]) {
+    return HostedTeamModel.find({ eventId: { $in: eventIds }, placement: { $in: [1, 2, 3] } })
+      .sort({ placement: 1 })
+      .lean();
+  },
+  setTeamPlacement(teamId: string, placement: 1 | 2 | 3, session?: Session) {
+    return HostedTeamModel.updateOne({ _id: teamId }, { $set: { placement } }).session(session ?? null);
   },
 };

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { redirect } from "next/navigation";
 import { listOpenMatches } from "@/services/match.service";
 import { listPublicEvents } from "@/services/event.service";
 import { getPlatformSettings } from "@/services/settings.service";
@@ -20,13 +19,12 @@ import {
 
 export default async function LobbyPage() {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
   await connectDb();
   const [matches, events, settings, user] = await Promise.all([
     listOpenMatches(),
     listPublicEvents(),
     getPlatformSettings(),
-    userRepository.findById(session.user.id),
+    session?.user?.id ? userRepository.findById(session.user.id) : null,
   ]);
 
   return (
@@ -42,7 +40,8 @@ export default async function LobbyPage() {
               NV Token balance
             </p>
             <p className="mt-0.5 text-3xl font-extrabold leading-none">
-              {user?.availableCoins ?? 0} <span className="text-base text-white/65">NV</span>
+              {user?.availableCoins ?? 0}{" "}
+              <span className="text-base text-white/65">NV</span>
             </p>
             <p className="mt-2 text-xs text-[var(--muted)]">
               {user?.lockedCoins ?? 0} NV reserved for registrations
@@ -54,12 +53,14 @@ export default async function LobbyPage() {
         <div>
           <div className="flex items-center gap-2 text-[var(--accent-2)]">
             <Swords size={17} />
-            <p className="text-xs font-bold uppercase tracking-[0.16em]">Clash arena</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em]">
+              Clash arena
+            </p>
           </div>
-          <h1 className="mt-1 text-xl font-extrabold">Open challenges</h1>
+          <h1 className="mt-1 text-xl font-extrabold">Create challenges</h1>
         </div>
         <Button asChild size="sm" className="w-full sm:w-auto">
-          <Link href="/clash/new">Create challenge</Link>
+          <Link href={session?.user?.id ? "/clash/new" : "/login?callbackUrl=/clash/new"} data-tour="post-challenge">Post challenge</Link>
         </Button>
       </div>
       {matches.length === 0 ? (
@@ -82,8 +83,12 @@ export default async function LobbyPage() {
               <div className="relative p-4 text-white sm:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Challenge by</p>
-                    <h3 className="mt-1 text-lg font-extrabold">{match.creatorIgn ?? "Unknown"}</h3>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
+                      Challenge by
+                    </p>
+                    <h3 className="mt-1 text-lg font-extrabold">
+                      {match.creatorIgn ?? "Unknown"}
+                    </h3>
                   </div>
                   <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-yellow-300/30 bg-yellow-400/15 px-3 py-1.5 text-xs font-bold text-yellow-200">
                     <Coins size={13} />
@@ -108,11 +113,17 @@ export default async function LobbyPage() {
                     </div>
                     <div className="rounded-lg border border-white/10 bg-black/25 px-2.5 py-1.5">
                       <p className="text-[10px] text-white/55">Skill</p>
-                      <p className="font-bold">{match.characterSkill ?? "No"}</p>
+                      <p className="font-bold">
+                        {match.characterSkill ?? "No"}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 text-xs font-bold text-[var(--accent-2)]">
-                    View <ChevronRight size={16} className="transition-transform group-hover:translate-x-0.5" />
+                    View{" "}
+                    <ChevronRight
+                      size={16}
+                      className="transition-transform group-hover:translate-x-0.5"
+                    />
                   </div>
                 </div>
               </div>
@@ -120,10 +131,12 @@ export default async function LobbyPage() {
           </Link>
         ))
       )}
-      <div className="pt-1">
+      <div className="pt-1" data-tour="daily-events">
         <div className="flex items-center gap-2 text-[var(--accent)]">
           <Trophy size={17} />
-          <p className="text-xs font-bold uppercase tracking-[0.16em]">Tournament hub</p>
+          <p className="text-xs font-bold uppercase tracking-[0.16em]">
+            Tournament hub
+          </p>
         </div>
         <h2 className="mt-1 text-xl font-extrabold">Tonight&apos;s events</h2>
       </div>
@@ -133,31 +146,61 @@ export default async function LobbyPage() {
         </p>
       ) : (
         events.map((event) => (
-          <Link key={String(event._id)} href={`/events/${String(event._id)}`} className="group block">
+          <Link
+            key={String(event._id)}
+            href={`/events/${String(event._id)}`}
+            className="group block"
+          >
             <Card className="relative overflow-hidden border-white/15 p-0 transition duration-300 group-hover:-translate-y-0.5 group-hover:border-[var(--accent-2)]/65 group-hover:shadow-[0_18px_44px_rgba(0,224,198,0.12)]">
-              <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('/br.png')" }} />
+              <div
+                className="absolute inset-0 bg-cover bg-center"
+                style={{ backgroundImage: "url('/br.png')" }}
+              />
               <div className="absolute inset-0 bg-gradient-to-r from-[#080d14]/95 via-[#080d14]/82 to-[#080d14]/45" />
               <div className="relative p-4 text-white sm:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--accent-2)]">Battle royale event</p>
-                    <h3 className="mt-1 truncate text-lg font-extrabold">{event.name}</h3>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--accent-2)]">
+                      Battle royale event
+                    </p>
+                    <h3 className="mt-1 truncate text-lg font-extrabold">
+                      {event.name}
+                    </h3>
                   </div>
-                  <Badge className="shrink-0 border border-[var(--accent-2)]/25 bg-[var(--accent-2)]/15 text-[var(--accent-2)]">{event.status}</Badge>
+                  <Badge className="shrink-0 border border-[var(--accent-2)]/25 bg-[var(--accent-2)]/15 text-[var(--accent-2)]">
+                    {event.status}
+                  </Badge>
                 </div>
                 <div className="mt-5 grid grid-cols-2 gap-2 text-xs">
                   <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
                     <CalendarDays size={15} className="text-[var(--accent)]" />
-                    <span>{new Date(event.eventDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                    <span>
+                      {new Date(event.eventDate).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
                     <UsersRound size={15} className="text-[var(--accent)]" />
-                    <span>{event.reservedSlots}/{event.maxSlots} slots</span>
+                    <span>
+                      {event.reservedSlots}/{event.maxSlots} slots
+                    </span>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3 text-xs">
-                  <p className="font-semibold text-white/80"><span className="text-white/55">Entry </span>{event.entryFeeCoins} NV <span className="px-1 text-white/35">•</span> {event.format}</p>
-                  <div className="flex items-center gap-1 font-bold text-[var(--accent-2)]">View event <ChevronRight size={16} className="transition-transform group-hover:translate-x-0.5" /></div>
+                  <p className="font-semibold text-white/80">
+                    <span className="text-white/55">Entry </span>
+                    {event.entryFeeCoins} NV{" "}
+                    <span className="px-1 text-white/35">•</span> {event.format}
+                  </p>
+                  <div className="flex items-center gap-1 font-bold text-[var(--accent-2)]">
+                    View event{" "}
+                    <ChevronRight
+                      size={16}
+                      className="transition-transform group-hover:translate-x-0.5"
+                    />
+                  </div>
                 </div>
               </div>
             </Card>

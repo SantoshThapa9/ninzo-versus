@@ -80,6 +80,7 @@ export const SupportStatus = {
 export type SupportStatus = (typeof SupportStatus)[keyof typeof SupportStatus];
 
 export const ReportType = {
+  GENERAL_SUPPORT: "general_support",
   HACKING: "hacking",
   ROOM_SETTING_MANIPULATION: "room_setting_manipulation",
   CHEATING: "cheating",

@@ -4,7 +4,7 @@ import { PaymentStatus } from "@/types/enums";
 const PaymentSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    coins: { type: Number, required: true, min: 1 },
+    coins: { type: Number, required: true, min: 0.01 },
     amountPaise: { type: Number, required: true, min: 1 },
     feePaise: { type: Number, required: true, min: 0 },
     razorpayOrderId: { type: String, required: true, unique: true },

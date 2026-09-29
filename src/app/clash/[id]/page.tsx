@@ -56,47 +56,66 @@ export default async function ClashDetailPage({
   return (
     <div className="mx-auto grid w-full max-w-2xl gap-4 pb-2">
       <Card className="relative overflow-hidden border-white/15 bg-transparent p-0">
-        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('/cs.png')" }} />
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: "url('/cs.png')" }}
+        />
         <div className="absolute inset-0 bg-gradient-to-r from-[#070a10]/95 via-[#070a10]/82 to-[#070a10]/50" />
         <div className="relative p-5 text-white sm:p-6">
-          <div className="mb-4 flex items-center gap-2 text-[var(--accent-2)]"><Swords size={17} /><p className="text-xs font-bold uppercase tracking-[0.16em]">Clash arena</p></div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-3xl font-black tracking-tight">
-            {match.format}v{match.format}
-          </h1>
-          <Badge className="border border-[var(--accent-2)]/25 bg-[var(--accent-2)]/15">{match.status}</Badge>
-        </div>
-        <p className="mt-3 text-sm leading-6 text-white/70">{match.rules}</p>
-        <p className="mt-3 break-words text-sm">
-          {match.stakeMin === match.stakeMax
-            ? `Match registration: ${match.stakeMin} NV Tokens each`
-            : `Match registration range: ${match.stakeMin}–${match.stakeMax} NV Tokens each`}{" "}
-          <span className="hidden sm:inline">•</span>
-          <span className="block sm:inline">
-            {" "}
-            Creator: {isCreator ? "You" : match.creatorIgn}
-          </span>
-        </p>
-        {match.acceptedStake ? (
-          <p className="mt-2 text-sm">
-            Registered with {match.acceptedStake} NV Tokens each • Final result
-            verification determines eligible esports rewards.
+          <div className="mb-4 flex items-center gap-2 text-[var(--accent-2)]">
+            <Swords size={17} />
+            <p className="text-xs font-bold uppercase tracking-[0.16em]">
+              Clash arena
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-3xl font-black tracking-tight">
+              {match.format}v{match.format}
+            </h1>
+            <Badge className="border border-[var(--accent-2)]/25 bg-[var(--accent-2)]/15">
+              {match.status}
+            </Badge>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-white/70">{match.rules}</p>
+          <p className="mt-3 break-words text-sm">
+            {match.stakeMin === match.stakeMax
+              ? `Match registration: ${match.stakeMin} NV Tokens each`
+              : `Match registration range: ${match.stakeMin}–${match.stakeMax} NV Tokens each`}{" "}
+            <span className="hidden sm:inline">•</span>
+            <span className="block sm:inline">
+              {" "}
+              Creator: {isCreator ? "You" : match.creatorIgn}
+            </span>
           </p>
-        ) : null}
+          {match.acceptedStake ? (
+            <p className="mt-2 text-sm">
+              Registered with {match.acceptedStake} NV Tokens each • Final
+              result verification determines eligible esports rewards.
+            </p>
+          ) : null}
         </div>
       </Card>
       <Card className="border-white/10">
-        <div className="mb-3 flex items-center gap-2"><ShieldCheck size={18} className="text-[var(--accent-2)]" /><h2 className="font-bold">Match rules</h2></div>
-        <ul className="list-disc space-y-1 pl-5 text-sm leading-6 text-[var(--muted)]">
-          <li>
-            Use only the agreed custom-room settings and follow the rules above.
+        <div className="mb-3 flex items-center gap-2">
+          <ShieldCheck size={18} className="text-[var(--accent-2)]" />
+          <h2 className="font-bold">Match rules</h2>
+        </div>
+        <ul className="space-y-3 text-sm leading-6 text-[var(--muted)]">
+          <li className="flex items-start gap-3">
+            <span className="mt-1 text-[var(--primary)]">✓</span>
+            <span>
+              Use only the agreed-upon custom-room settings and follow all
+              tournament rules.
+            </span>
           </li>
-          <li>Do not share room credentials outside this private match.</li>
-          <li>
-            Either captain can end the match; then each captain submits one
-            result screenshot.
+
+          <li className="flex items-start gap-3">
+            <span className="mt-1 text-[var(--primary)]">✓</span>
+            <span>
+              After the match ends, both players must upload a screenshot of the
+              final result.
+            </span>
           </li>
-          <li>AI analyses both result screenshots to determine the winner.</li>
         </ul>
       </Card>
       {match.status === "open" && !isCreator ? (
@@ -118,6 +137,7 @@ export default async function ClashDetailPage({
                 type="number"
                 min={match.stakeMin}
                 max={match.stakeMax}
+                step="0.01"
                 required
               />
             </div>

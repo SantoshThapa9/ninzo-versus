@@ -1,6 +1,16 @@
 import { Schema, model, models, type InferSchemaType, type Types } from "mongoose";
 import { MatchStatus } from "@/types/enums";
 
+const evidenceFailuresField = {
+  type: [
+    {
+      userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+      count: { type: Number, required: true, default: 0, min: 0 },
+    },
+  ],
+  default: [],
+};
+
 const MatchSchema = new Schema(
   {
     format: { type: Number, required: true, min: 1, max: 6 },
@@ -27,6 +37,7 @@ const MatchSchema = new Schema(
     aiAnalysisStartedAt: { type: Date },
     aiWinnerRecommendation: { type: String },
     aiAnalysis: { type: Schema.Types.Mixed },
+    evidenceFailures: evidenceFailuresField,
     warningAcknowledgedAt: { type: Date },
   },
   { timestamps: true },
@@ -37,4 +48,12 @@ MatchSchema.index({ creatorId: 1, status: 1 });
 
 export type MatchDoc = InferSchemaType<typeof MatchSchema> & { _id: Types.ObjectId };
 
-export const MatchModel = models.Match || model("Match", MatchSchema);
+// Next.js development hot reload reuses Mongoose models. Add fields introduced
+// during a reload to that cached schema too, otherwise Mongoose silently strips
+// the new field from updates and the retry count appears to reset on refresh.
+const cachedMatchModel = models.Match;
+if (cachedMatchModel && !cachedMatchModel.schema.path("evidenceFailures")) {
+  cachedMatchModel.schema.add({ evidenceFailures: evidenceFailuresField });
+}
+
+export const MatchModel = cachedMatchModel || model("Match", MatchSchema);

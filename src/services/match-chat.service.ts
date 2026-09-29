@@ -2,8 +2,12 @@ import { z } from "zod";
 import { connectDb } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { MatchChatMessageModel } from "@/models/match-chat-message";
+import { UserModel } from "@/models/user";
 import { matchRepository } from "@/repositories/match.repository";
-import { resultRepository } from "@/repositories/ops.repository";
+import {
+  evidenceAttemptRepository,
+  resultRepository,
+} from "@/repositories/ops.repository";
 import {
   expireMatchAfterChatTimeout,
   finalizeMatchEvidence,
@@ -86,8 +90,15 @@ function getChatExpiry(match: { chatExpiresAt?: Date; updatedAt: Date }) {
 
 async function assertChatOpen(userId: string, matchId: string) {
   let match = await getParticipantMatch(userId, matchId);
-  await expireMatchAfterChatTimeout(matchId);
-  match = await getParticipantMatch(userId, matchId);
+  // Starting a transaction for every sent message is expensive. It is only
+  // needed after the deadline, when the match must be refunded and closed.
+  if (
+    (match.status === "accepted" || match.status === "live") &&
+    getChatExpiry(match) <= new Date()
+  ) {
+    await expireMatchAfterChatTimeout(matchId);
+    match = await getParticipantMatch(userId, matchId);
+  }
   if (match.status === "awaiting_evidence" || match.status === "analyzing") {
     await finalizeMatchEvidence(matchId);
     match = await getParticipantMatch(userId, matchId);
@@ -118,9 +129,16 @@ async function assertChatOpen(userId: string, matchId: string) {
 
 export async function getMatchChat(userId: string, matchId: string) {
   await connectDb();
-  await getParticipantMatch(userId, matchId);
-  await expireMatchAfterChatTimeout(matchId);
-  const match = await getParticipantMatch(userId, matchId);
+  let match = await getParticipantMatch(userId, matchId);
+  // Normal chat polling stays read-only. Only the first request after expiry
+  // performs the settlement transaction.
+  if (
+    (match.status === "accepted" || match.status === "live") &&
+    getChatExpiry(match) <= new Date()
+  ) {
+    await expireMatchAfterChatTimeout(matchId);
+    match = await getParticipantMatch(userId, matchId);
+  }
   const isEvidenceMode = [
     "awaiting_evidence",
     "analyzing",
@@ -129,22 +147,21 @@ export async function getMatchChat(userId: string, matchId: string) {
     "settled",
   ].includes(match.status);
   const expiresAt = getChatExpiry(match);
-  const messages = await MatchChatMessageModel.find({
-    matchId,
-    expiresAt: { $gt: new Date() },
-  })
+  const messages = await MatchChatMessageModel.find({ matchId })
     .sort({ createdAt: 1 })
     .lean();
-  const senderIds = [
-    ...new Set(messages.map((message) => String(message.senderId))),
+  const participantIds = [
+    String(match.creatorId),
+    String(match.opponentCaptainId),
   ];
-  const senderIdentities = await Promise.all(
-    senderIds.map(async (senderId) => {
-      const identity = await getCurrentUserIdentity(senderId);
-      return [senderId, identity.ign || "Player"] as const;
-    }),
+  // `ign` is intentionally mirrored on User for hot paths such as chat. One
+  // indexed lookup supplies both participant names, including an empty chat.
+  const users = await UserModel.find({ _id: { $in: participantIds } })
+    .select("ign")
+    .lean();
+  const nameBySenderId = new Map(
+    users.map((user) => [String(user._id), user.ign || "Player"]),
   );
-  const nameBySenderId = new Map(senderIdentities);
   const evidence = isEvidenceMode
     ? await resultRepository.listForMatch(matchId)
     : [];
@@ -155,12 +172,23 @@ export async function getMatchChat(userId: string, matchId: string) {
         roomId?: string;
       }
     | undefined;
-  const currentPlayerIgn = (await getCurrentUserIdentity(userId)).ign;
   const opponentId =
     String(match.creatorId) === userId
       ? String(match.opponentCaptainId)
       : String(match.creatorId);
-  const opponentIgn = (await getCurrentUserIdentity(opponentId)).ign;
+  const identityById = new Map(
+    users.map((user) => [String(user._id), user.ign ?? ""]),
+  );
+  // Sender IDs can be absent for an empty chat, so retain the profile fallback
+  // only for the evidence-result calculation.
+  const currentPlayerIgn =
+    identityById.get(userId) ?? (await getCurrentUserIdentity(userId)).ign;
+  const opponentIgn =
+    identityById.get(opponentId) ??
+    (await getCurrentUserIdentity(opponentId)).ign;
+  const failedUploadAttempts = isEvidenceMode
+    ? await evidenceAttemptRepository.countFailures(matchId, userId)
+    : 0;
   const extractedResult = myAnalysis?.winnerIGN
     ? fuzzyIgnMatches(myAnalysis.winnerIGN, currentPlayerIgn)
       ? "win"
@@ -176,6 +204,7 @@ export async function getMatchChat(userId: string, matchId: string) {
       match.status === "cancelled" ||
       (match.completedBy?.length ?? 0) > 0,
     matchStatus: match.status,
+    failedUploadAttempts,
     result:
       match.status === "settled"
         ? (match.winnerTeam === "A") === (String(match.creatorId) === userId)
@@ -215,10 +244,12 @@ export async function sendMatchChatMessage(
   const body = messageSchema.parse(rawBody);
   await connectDb();
   const expiresAt = await assertChatOpen(userId, matchId);
-  return MatchChatMessageModel.create({
+  const message = await MatchChatMessageModel.create({
     matchId,
     senderId: userId,
     body,
     expiresAt,
   });
+  const user = await UserModel.findById(userId).select("ign").lean();
+  return { ...message.toObject(), senderName: user?.ign || "Player" };
 }

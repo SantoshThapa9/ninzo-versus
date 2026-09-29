@@ -2,7 +2,7 @@ import Razorpay from "razorpay";
 import crypto from "crypto";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
-import { applyPercent, coinsToRupees } from "@/lib/utils";
+import { applyPercent, coinsToRupees, isValidTokenAmount } from "@/lib/utils";
 import { getEnv, requireEnv } from "@/config/env";
 import { paymentRepository } from "@/repositories/finance.repository";
 import { applyLedger } from "@/services/wallet.service";
@@ -18,16 +18,15 @@ function razorpayClient() {
 
 export async function createDepositOrder(userId: string, coins: number) {
   const settings = await getPlatformSettings();
+  if (!isValidTokenAmount(coins)) {
+    throw new AppError("NV Tokens can have up to two decimal places.", "INVALID_COINS");
+  }
   if (coins < settings.minDepositCoins) {
     throw new AppError(
       `Minimum NV Token purchase is ${settings.minDepositCoins} NV Tokens.`,
       "MIN_DEPOSIT",
     );
   }
-  if (coins % 1 !== 0) {
-    throw new AppError("NV Tokens must be a whole number.", "INVALID_COINS");
-  }
-
   const rupees = coinsToRupees(coins, settings.nvCoinsPerRupee);
   const feeRupees = (rupees * settings.depositFeePercent) / 100;
   const totalRupees = rupees + feeRupees;

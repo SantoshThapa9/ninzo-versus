@@ -108,6 +108,8 @@ export async function adminSettleAction(formData: FormData) {
   );
   revalidatePath("/admin/matches");
   revalidatePath("/matches");
+  revalidatePath("/rank");
+  revalidatePath("/profile");
   revalidatePath(`/clash/${String(formData.get("matchId") ?? "")}`);
 }
 

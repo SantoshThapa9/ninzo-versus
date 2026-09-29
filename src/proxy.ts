@@ -1,41 +1,22 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-export const protectedRoutes = ["/inventory", "/wallet", "/clash", "/events", "/support", "/profile", "/admin"] as const;
-
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const needsAuth = protectedRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
-  if (!needsAuth) return NextResponse.next();
 
-  const sessionCookie =
-    request.cookies.get("authjs.session-token") ??
-    request.cookies.get("__Secure-authjs.session-token");
+  // Maintenance mode
+  if (process.env.MAINTENANCE_MODE === "true") {
+    if (pathname !== "/maintenance") {
+      return NextResponse.redirect(new URL("/maintenance", request.url));
+    }
 
-  if (!sessionCookie) {
-    const login = new URL("/login", request.url);
-    login.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(login);
+    return NextResponse.next();
   }
-
+  // Browsing pages and the product tour are public. Server actions enforce
+  // authentication before changing player data.
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    "/wallet",
-    "/wallet/:path*",
-    "/inventory",
-    "/inventory/:path*",
-    "/clash",
-    "/clash/:path*",
-    "/events",
-    "/events/:path*",
-    "/support",
-    "/support/:path*",
-    "/profile",
-    "/profile/:path*",
-    "/admin",
-    "/admin/:path*",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { AppError } from "@/lib/errors";
+import { roundTokens } from "@/lib/utils";
 import { userRepository } from "@/repositories/user.repository";
 import { ledgerRepository } from "@/repositories/finance.repository";
 import { CoinTxnType, UserRole } from "@/types/enums";
@@ -25,8 +26,10 @@ export async function applyLedger(input: LedgerInput) {
   const user = await userRepository.findById(input.userId, input.session);
   if (!user) throw new AppError("User not found.", "USER_NOT_FOUND", 404);
 
-  const available = user.availableCoins + input.availableDelta;
-  const locked = user.lockedCoins + input.lockedDelta;
+  // Persist normalized values so repeated fractional credits/debits never
+  // accumulate JavaScript floating-point artifacts (for example 0.1 + 0.2).
+  const available = roundTokens(user.availableCoins + input.availableDelta);
+  const locked = roundTokens(user.lockedCoins + input.lockedDelta);
   if (available < 0 || locked < 0) {
     throw new AppError("Insufficient NV Tokens for match registration.", "INSUFFICIENT_FUNDS");
   }

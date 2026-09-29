@@ -4,7 +4,7 @@ import { WithdrawalStatus } from "@/types/enums";
 const WithdrawalSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    coins: { type: Number, required: true, min: 1 },
+    coins: { type: Number, required: true, min: 0.01 },
     feePercent: { type: Number, required: true, default: 0 },
     upiId: { type: String, required: true, trim: true },
     status: {

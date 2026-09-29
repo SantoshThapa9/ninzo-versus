@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
-import { applyPercent } from "@/lib/utils";
+import { applyPercent, isValidTokenAmount, roundTokens } from "@/lib/utils";
 import {
   CLASH_DEFAULTS,
   ECONOMY_DEFAULTS,
@@ -19,6 +19,7 @@ import { getPlatformSettings } from "@/services/settings.service";
 import { deletePrivateMedia } from "@/services/media.service";
 import {
   auditRepository,
+  evidenceAttemptRepository,
   resultRepository,
   verifiedRoomIdRepository,
 } from "@/repositories/ops.repository";
@@ -39,15 +40,30 @@ const createMatchSchema = z.object({
       //curently only solo focus
       // CLASH_DEFAULTS.teamSizes.includes(n as 1 | 2 | 3 | 4 | 5 | 6),
     ),
-  stakeMin: z.number().int().min(ECONOMY_DEFAULTS.minMatchStakeCoins),
-  stakeMax: z.number().int().min(ECONOMY_DEFAULTS.minMatchStakeCoins),
+  stakeMin: z
+    .number()
+    .min(ECONOMY_DEFAULTS.minMatchStakeCoins)
+    .refine(isValidTokenAmount, {
+      message: "NV Tokens can have up to two decimal places.",
+    }),
+  stakeMax: z
+    .number()
+    .min(ECONOMY_DEFAULTS.minMatchStakeCoins)
+    .refine(isValidTokenAmount, {
+      message: "NV Tokens can have up to two decimal places.",
+    }),
   rules: z.string().min(4),
   warningAcknowledged: z.literal(true),
 });
 
 const acceptMatchSchema = z.object({
   matchId: z.string(),
-  stake: z.number().int().min(ECONOMY_DEFAULTS.minMatchStakeCoins),
+  stake: z
+    .number()
+    .min(ECONOMY_DEFAULTS.minMatchStakeCoins)
+    .refine(isValidTokenAmount, {
+      message: "NV Tokens can have up to two decimal places.",
+    }),
   warningAcknowledged: z.literal(true),
 });
 
@@ -199,10 +215,10 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
       );
     }
 
-    const refund = match.lockedStake - input.stake;
-    const prizePool = input.stake * 2;
+    const refund = roundTokens(match.lockedStake - input.stake);
+    const prizePool = roundTokens(input.stake * 2);
     const platformFeeAmount = applyPercent(prizePool, match.platformFeePercent);
-    const winnerPayout = prizePool - platformFeeAmount;
+    const winnerPayout = roundTokens(prizePool - platformFeeAmount);
 
     match.opponentCaptainId =
       userId as unknown as typeof match.opponentCaptainId;
@@ -371,6 +387,67 @@ export async function submitMatchEvidence(
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + MEDIA_DEFAULTS.tempRetentionDays);
 
+  const registerUnreadableScreenshot = async (
+    reason: string,
+  ): Promise<never> => {
+    // Each rejection is its own durable record. Counting records avoids
+    // Mongoose document-array caching during Next.js development reloads.
+    await evidenceAttemptRepository.recordFailure({ matchId, userId, reason });
+    const attempt = await evidenceAttemptRepository.countFailures(matchId, userId);
+
+    if (attempt < 3) {
+      try {
+        await deletePrivateMedia(blobPathname);
+      } catch {
+        console.error("[match-ai] Could not remove rejected screenshot upload.", {
+          matchId,
+          userId,
+        });
+      }
+      const remaining = 3 - attempt;
+      throw new AppError(
+        `${reason} You have ${remaining} screenshot ${remaining === 1 ? "attempt" : "attempts"} remaining.`,
+        "SCREENSHOT_REUPLOAD_REQUIRED",
+        422,
+        { failedUploadAttempts: attempt },
+      );
+    }
+
+    // Preserve the final failed image so an administrator has the actual
+    // evidence the player submitted when deciding the match.
+    const submission = await resultRepository.create({
+      matchId,
+      userId,
+      kind,
+      mediaUrl,
+      blobPathname,
+      expiresAt,
+      aiAnalysis: { confidence: 0, raw: { rejectionReason: reason } },
+    });
+    // Keep evidence submission open for the other player. This player's third
+    // image is now locked as their evidence, and the match will move to admin
+    // review once the other player's evidence is submitted and checked.
+    await MatchModel.findByIdAndUpdate(matchId, {
+      $set: {
+        aiWinnerRecommendation:
+          "one player's third screenshot requires admin review",
+      },
+    });
+    await auditRepository.write({
+      actorId: userId,
+      action: "match.evidence.admin_review_required",
+      entityType: "Match",
+      entityId: matchId,
+      metadata: { reason, attempt, evidenceId: String(submission._id) },
+    });
+    throw new AppError(
+      "Your third screenshot could not be verified. It has been saved for admin review; the other player can still submit their screenshot.",
+      "ADMIN_REVIEW_REQUIRED",
+      422,
+      { failedUploadAttempts: attempt },
+    );
+  };
+
   // Use the identity captured when the match was created/accepted. Profile or
   // Atlas edits during a match must not change the evidence being validated.
   const participants = await matchRepository.listParticipants(matchId);
@@ -427,18 +504,8 @@ export async function submitMatchEvidence(
         hasWinnerIgn: Boolean(analysis.winnerIGN),
       },
     );
-    try {
-      await deletePrivateMedia(blobPathname);
-    } catch {
-      console.error("[match-ai] Could not remove rejected screenshot upload.", {
-        matchId,
-        userId,
-      });
-    }
-    throw new AppError(
-      "We couldn't read the Custom Room ID or winner IGN. Please upload a clear final-result screenshot again.",
-      "SCREENSHOT_REUPLOAD_REQUIRED",
-      422,
+    await registerUnreadableScreenshot(
+      "We couldn't read the required match details from this screenshot.",
     );
   }
 
@@ -446,7 +513,7 @@ export async function submitMatchEvidence(
   // Checking it here prevents an old final-result image from being accepted as
   // evidence for a new match.
   const previouslyVerifiedRoom = await verifiedRoomIdRepository.find(
-    analysis.roomId,
+    analysis.roomId as string,
   );
   if (previouslyVerifiedRoom) {
     console.warn("[match-ai] Screenshot rejected: room ID was already used.", {
@@ -455,18 +522,8 @@ export async function submitMatchEvidence(
       roomId: analysis.roomId,
       verifiedMatchId: String(previouslyVerifiedRoom.matchId),
     });
-    try {
-      await deletePrivateMedia(blobPathname);
-    } catch {
-      console.error("[match-ai] Could not remove reused screenshot upload.", {
-        matchId,
-        userId,
-      });
-    }
-    throw new AppError(
-      "This Custom Room ID was already used in a completed match. Do not upload an old game screenshot; your account may be banned. Please upload the current match's final-result screenshot again.",
-      "REUSED_ROOM_ID_REUPLOAD_REQUIRED",
-      422,
+    await registerUnreadableScreenshot(
+      "This match screenshot was already used. Do not upload an old screenshot; upload the current match's final-result screenshot.",
     );
   }
 
@@ -600,7 +657,6 @@ export async function finalizeMatchEvidence(matchId: string) {
               players: [creatorIgn ?? "", opponentIgn ?? ""],
               question:
                 "Do both screenshots match the same final result and winner? The extracted roomId must be the same at the bottom-left, and the winnerIGN must match the same player name in both images. If the winner is not the same in both screenshots, return valid=false.",
-              winnerUserId: creatorIgn ?? opponentIgn ?? "",
             })
           : undefined;
       const common =
@@ -909,14 +965,14 @@ export async function adminSettleMatch(
     const stake = match.acceptedStake;
     // The fee is taken from the combined pool: 10 NV + 10 NV = 20 NV pool;
     // at 5%, the winner receives 19 NV.
-    const prizePool = stake * 2;
+    const prizePool = roundTokens(stake * 2);
     const platformFeeAmount = applyPercent(prizePool, match.platformFeePercent);
-    const winnerPayout = prizePool - platformFeeAmount;
+    const winnerPayout = roundTokens(prizePool - platformFeeAmount);
     // A draw returns the remaining pool equally after the platform fee. If a
-    // fee cannot be divided evenly, the first captain receives the extra NV.
+    // fee cannot be divided evenly, the first captain receives the extra 0.01 NV.
     const drawPayouts = [
-      Math.ceil(winnerPayout / 2),
-      Math.floor(winnerPayout / 2),
+      roundTokens(Math.ceil((winnerPayout * 100) / 2) / 100),
+      roundTokens(Math.floor((winnerPayout * 100) / 2) / 100),
     ];
 
     for (const [index, uid] of participantIds.entries()) {

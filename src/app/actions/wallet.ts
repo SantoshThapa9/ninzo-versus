@@ -52,7 +52,8 @@ export async function saveProfileAction(_prev: { error?: string; ok?: boolean } 
     revalidatePath("/profile");
     revalidatePath("/lobby");
     revalidatePath("/challenges");
-    revalidatePath("/events");
+    revalidatePath("/matches");
+    revalidatePath("/rank");
     return { ok: true };
   } catch (error) {
     return { error: toErrorMessage(error) };

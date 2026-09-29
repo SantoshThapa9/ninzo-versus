@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { EventFormat } from "@/types/enums";
 import { DEFAULT_PRIZE_SPLIT } from "@/config/defaults";
+import { roundTokens } from "@/lib/utils";
 import { ActionForm } from "@/components/forms/action-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,12 +39,12 @@ function toDateInput(value?: string) {
 export function EventBuilderForm({ event }: { event?: EventValues }) {
   const [maxSlots, setMaxSlots] = useState(event?.maxSlots ?? 48);
   const [entryFeeCoins, setEntryFeeCoins] = useState(event?.entryFeeCoins ?? 10);
-  const totalPool = Math.max(0, maxSlots) * Math.max(0, entryFeeCoins);
+  const totalPool = roundTokens(Math.max(0, maxSlots) * Math.max(0, entryFeeCoins));
   const rewards = {
-    first: Math.floor((totalPool * DEFAULT_PRIZE_SPLIT.firstPercent) / 100),
-    second: Math.floor((totalPool * DEFAULT_PRIZE_SPLIT.secondPercent) / 100),
-    third: Math.floor((totalPool * DEFAULT_PRIZE_SPLIT.thirdPercent) / 100),
-    platform: totalPool - Math.floor((totalPool * 90) / 100),
+    first: roundTokens((totalPool * DEFAULT_PRIZE_SPLIT.firstPercent) / 100),
+    second: roundTokens((totalPool * DEFAULT_PRIZE_SPLIT.secondPercent) / 100),
+    third: roundTokens((totalPool * DEFAULT_PRIZE_SPLIT.thirdPercent) / 100),
+    platform: roundTokens(totalPool - roundTokens((totalPool * 90) / 100)),
   };
 
   return (
@@ -76,7 +77,7 @@ export function EventBuilderForm({ event }: { event?: EventValues }) {
       </div>
       <div>
         <Label htmlFor="entryFeeCoins">Match registration (NV Tokens)</Label>
-        <Input id="entryFeeCoins" name="entryFeeCoins" type="number" min={0} value={entryFeeCoins} onChange={(e) => setEntryFeeCoins(Number(e.target.value))} required />
+        <Input id="entryFeeCoins" name="entryFeeCoins" type="number" min={0} step="0.01" value={entryFeeCoins} onChange={(e) => setEntryFeeCoins(Number(e.target.value))} required />
       </div>
       <input type="hidden" name="platformProfit" value={DEFAULT_PRIZE_SPLIT.platformProfitPercent} />
       <input type="hidden" name="first" value={DEFAULT_PRIZE_SPLIT.firstPercent} />

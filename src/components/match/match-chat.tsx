@@ -49,39 +49,55 @@ export function MatchChat({
   const [uploading, setUploading] = useState(false);
   const [analyzingScreenshot, setAnalyzingScreenshot] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [failedUploadAttempts, setFailedUploadAttempts] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const transcriptRef = useRef<HTMLDivElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
   const previewUrlRef = useRef<string | undefined>(undefined);
   const sendingRef = useRef(false);
+  const loadingRef = useRef(false);
   const load = useCallback(async () => {
-    const response = await fetch(`/api/clash/${matchId}/chat`, {
-      cache: "no-store",
-    });
-    const data = (await response.json()) as {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    try {
+      const response = await fetch(`/api/clash/${matchId}/chat`, {
+        cache: "no-store",
+      });
+      const data = (await response.json()) as {
       messages?: Message[];
       expiresAt?: string;
       closed?: boolean;
       matchStatus?: string;
       result?: "win" | "loss" | "hold";
       evidence?: Evidence[];
+      failedUploadAttempts?: number;
       error?: string;
     };
-    if (!response.ok) return setStatus(data.error ?? "Unable to load chat.");
-    setMessages(data.messages ?? []);
-    setExpiresAt(data.expiresAt);
-    setClosed(Boolean(data.closed));
-    setMatchStatus(data.matchStatus ?? "");
-    setResult((current) =>
-      typeof data.result === "undefined" ? current : data.result,
-    );
-    setEvidence(data.evidence ?? []);
-    setStatus("");
+      if (!response.ok) return setStatus(data.error ?? "Unable to load chat.");
+      setMessages(data.messages ?? []);
+      setExpiresAt(data.expiresAt);
+      setClosed(Boolean(data.closed));
+      setMatchStatus(data.matchStatus ?? "");
+      setResult((current) =>
+        typeof data.result === "undefined" ? current : data.result,
+      );
+      setEvidence(data.evidence ?? []);
+      setFailedUploadAttempts(data.failedUploadAttempts ?? 0);
+      setStatus("");
+    } catch {
+      setStatus("Unable to load chat.");
+    } finally {
+      loadingRef.current = false;
+    }
   }, [matchId]);
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);
-    const timer = window.setInterval(() => void load(), 10000);
+    // Fast enough to feel live without a WebSocket, and paused in background
+    // tabs so it does not generate needless Atlas reads.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 2000);
     return () => {
       window.clearTimeout(initialLoad);
       window.clearInterval(timer);
@@ -172,7 +188,11 @@ export function MatchChat({
     form.set("matchId", matchId);
     form.set("kind", kind);
     let response: Response;
-    let data: { error?: string; result?: "win" | "loss" };
+    let data: {
+      error?: string;
+      result?: "win" | "loss";
+      failedUploadAttempts?: number;
+    };
     try {
       response = await fetch("/api/upload", { method: "POST", body: form });
       data = (await response.json()) as {
@@ -185,9 +205,13 @@ export function MatchChat({
       setAnalyzingScreenshot(false);
     }
     if (!response.ok) {
+      if (typeof data.failedUploadAttempts === "number") {
+        setFailedUploadAttempts(data.failedUploadAttempts);
+      }
       selectScreenshot(undefined);
       setPreviewOpen(false);
       if (screenshotInputRef.current) screenshotInputRef.current.value = "";
+      void load();
       return setUploadError(
         data.error ??
           "We couldn't read the screenshot. Please upload a clear final-result image again.",
@@ -213,6 +237,7 @@ export function MatchChat({
   const myEvidence = evidence.filter((item) => item.userId === currentUserId);
   const canUpload =
     closed && matchStatus === "awaiting_evidence" && myEvidence.length === 0;
+  const remainingUploadAttempts = Math.max(0, 3 - failedUploadAttempts);
   return (
     <div className="grid min-w-0 gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
@@ -407,13 +432,18 @@ export function MatchChat({
                 ) : null}
               </div>
               <p className="px-1 text-xs text-[var(--muted)]">
-                Upload your final match-result screenshot.
+                You have {remainingUploadAttempts} of 3 screenshot attempts remaining.
               </p>
             </>
           ) : null}
           {matchStatus === "awaiting_evidence" && !canUpload ? (
             <p className="px-1 text-sm text-[var(--accent-2)]">
               Your result screenshot is submitted. Waiting for the other player.
+            </p>
+          ) : null}
+          {matchStatus === "disputed" ? (
+            <p className="px-1 text-sm font-medium text-[var(--danger)]">
+              Screenshot verification needs admin review. Your final upload has been saved.
             </p>
           ) : null}
         </div>

@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function rupeesToCoins(rupees: number, coinsPerRupee: number) {
-  return Math.round(rupees * coinsPerRupee);
+  return roundTokens(rupees * coinsPerRupee);
 }
 
 export function coinsToRupees(coins: number, coinsPerRupee: number) {
@@ -14,7 +14,16 @@ export function coinsToRupees(coins: number, coinsPerRupee: number) {
 }
 
 export function applyPercent(amount: number, percent: number) {
-  return Math.round((amount * percent) / 100);
+  return roundTokens((amount * percent) / 100);
+}
+
+/** NV Tokens are stored and settled to two decimal places. */
+export function roundTokens(amount: number) {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+export function isValidTokenAmount(amount: number) {
+  return Number.isFinite(amount) && amount > 0 && roundTokens(amount) === amount;
 }
 
 export function serializeDoc<T extends { _id?: unknown }>(

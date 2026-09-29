@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
+import { isValidTokenAmount, roundTokens } from "@/lib/utils";
 import { DEFAULT_PRIZE_SPLIT } from "@/config/defaults";
 import { eventRepository } from "@/repositories/event.repository";
 import { applyLedger } from "@/services/wallet.service";
@@ -14,7 +15,10 @@ const eventSchema = z.object({
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "Choose a valid start time."),
   format: z.enum([EventFormat.SOLO, EventFormat.DUO, EventFormat.SQUAD]),
   maxSlots: z.number().int().positive(),
-  entryFeeCoins: z.number().int().min(0),
+  entryFeeCoins: z.number().min(0).refine(
+    (amount) => amount === 0 || isValidTokenAmount(amount),
+    { message: "NV Tokens can have up to two decimal places." },
+  ),
   prizeDistribution: z.object({
     platformProfit: z.number().min(0),
     first: z.number().min(0),
@@ -193,11 +197,11 @@ export async function payEventPrizes(
   const event = await eventRepository.findById(eventId);
   if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
   const teams = await eventRepository.listTeams(eventId);
-  const prizePool = teams.length * event.entryFeeCoins;
+  const prizePool = roundTokens(teams.length * event.entryFeeCoins);
   const prizeFor = {
-    1: Math.floor((prizePool * event.prizeDistribution.first) / 100),
-    2: Math.floor((prizePool * event.prizeDistribution.second) / 100),
-    3: Math.floor((prizePool * event.prizeDistribution.third) / 100),
+    1: roundTokens((prizePool * event.prizeDistribution.first) / 100),
+    2: roundTokens((prizePool * event.prizeDistribution.second) / 100),
+    3: roundTokens((prizePool * event.prizeDistribution.third) / 100),
   };
 
   await withTransaction(async (session) => {
@@ -205,6 +209,7 @@ export async function payEventPrizes(
       const team = teams.find((t) => String(t._id) === row.teamId);
       if (!team) continue;
       const amount = prizeFor[row.placement];
+      await eventRepository.setTeamPlacement(row.teamId, row.placement, session);
       if (!amount) continue;
       await applyLedger({
         userId: String(team.captainId),
@@ -234,6 +239,37 @@ export async function payEventPrizes(
 export async function listPublicEvents() {
   await connectDb();
   return eventRepository.listPublic();
+}
+
+export type CompletedEventResult = {
+  id: string;
+  name: string;
+  eventDate: Date;
+  format: string;
+  placements: { placement: number; igns: string[] }[];
+};
+
+export async function listCompletedEventResults(): Promise<CompletedEventResult[]> {
+  await connectDb();
+  const events = await eventRepository.listCompleted();
+  if (!events.length) return [];
+
+  const teams = await eventRepository.listPlacedTeams(events.map((event) => String(event._id)));
+  const placementsByEvent = new Map<string, { placement: number; igns: string[] }[]>();
+  for (const team of teams) {
+    const eventId = String(team.eventId);
+    const placements = placementsByEvent.get(eventId) ?? [];
+    placements.push({ placement: team.placement!, igns: team.igns });
+    placementsByEvent.set(eventId, placements);
+  }
+
+  return events.map((event) => ({
+    id: String(event._id),
+    name: event.name,
+    eventDate: event.eventDate,
+    format: event.format,
+    placements: placementsByEvent.get(String(event._id)) ?? [],
+  }));
 }
 
 export async function getEventDetail(eventId: string, isAdmin: boolean) {

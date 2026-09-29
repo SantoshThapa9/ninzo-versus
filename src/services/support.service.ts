@@ -2,7 +2,6 @@ import { z } from "zod";
 import { connectDb } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { supportRepository, disputeRepository } from "@/repositories/ops.repository";
-import { supportAiReply } from "@/services/ai.service";
 import { ReportType, SupportStatus, TicketSender } from "@/types/enums";
 
 const reportTypes = Object.values(ReportType) as [ReportType, ...ReportType[]];
@@ -19,38 +18,15 @@ const createSchema = z.object({
 export async function openTicket(userId: string, raw: unknown) {
   const input = createSchema.parse(raw);
   await connectDb();
-  const ticket = await supportRepository.createTicket({ userId, ...input });
+  const ticket = await supportRepository.createTicket({ userId, source: "manual", ...input });
   await supportRepository.addMessage({
     ticketId: String(ticket._id),
     sender: TicketSender.USER,
     senderId: userId,
     body: input.summary,
   });
-
-  const missing: string[] = [];
-  if (!input.whatsappNumber) missing.push("WhatsApp number");
-  if (!input.freeFireUid) missing.push("Free Fire UID");
-  if (!input.ign) missing.push("In Game Name");
-  missing.push("Screenshots");
-  missing.push("Video (recommended)");
-
-  const ai = await supportAiReply({
-    summary: input.summary,
-    category: input.category,
-    history: [{ sender: "user", body: input.summary }],
-    missing,
-  });
-
-  await supportRepository.addMessage({
-    ticketId: String(ticket._id),
-    sender: TicketSender.AI,
-    body: ai.reply,
-  });
-
-  if (ai.escalate) {
-    ticket.status = SupportStatus.PENDING_ADMIN;
-    await ticket.save();
-  }
+  ticket.status = SupportStatus.PENDING_ADMIN;
+  await ticket.save();
 
   if (input.category === ReportType.MATCH_DISPUTE) {
     await disputeRepository.create({
@@ -71,11 +47,14 @@ export async function sendTicketMessage(userId: string, ticketId: string, body: 
   await connectDb();
   const ticket = await supportRepository.findTicket(ticketId);
   if (!ticket) throw new AppError("Ticket not found.", "NOT_FOUND", 404);
+  if (ticket.status === SupportStatus.RESOLVED) {
+    throw new AppError("This support request has been closed.", "TICKET_CLOSED", 409);
+  }
   if (!asAdmin && String(ticket.userId) !== userId) {
     throw new AppError("Forbidden.", "FORBIDDEN", 403);
   }
 
-  await supportRepository.addMessage({
+  const message = await supportRepository.addMessage({
     ticketId,
     sender: asAdmin ? TicketSender.ADMIN : TicketSender.USER,
     senderId: userId,
@@ -85,24 +64,8 @@ export async function sendTicketMessage(userId: string, ticketId: string, body: 
   if (asAdmin) {
     ticket.status = SupportStatus.ADMIN_ACTIVE;
     await ticket.save();
-    return;
   }
-
-  const history = await supportRepository.listMessages(ticketId);
-  const ai = await supportAiReply({
-    summary: ticket.summary,
-    category: ticket.category as ReportType,
-    history: history.map((m) => ({ sender: m.sender, body: m.body })),
-  });
-  await supportRepository.addMessage({
-    ticketId,
-    sender: TicketSender.AI,
-    body: ai.reply,
-  });
-  if (ai.escalate) {
-    ticket.status = SupportStatus.PENDING_ADMIN;
-    await ticket.save();
-  }
+  return message;
 }
 
 export async function getTicket(userId: string, ticketId: string, isAdmin: boolean) {
@@ -112,6 +75,21 @@ export async function getTicket(userId: string, ticketId: string, isAdmin: boole
   if (!isAdmin && String(ticket.userId) !== userId) {
     throw new AppError("Forbidden.", "FORBIDDEN", 403);
   }
-  const messages = await supportRepository.listMessages(ticketId);
-  return { ticket: JSON.parse(JSON.stringify(ticket)), messages };
+  const [messages, evidence] = await Promise.all([
+    supportRepository.listMessages(ticketId),
+    supportRepository.listEvidence(ticketId),
+  ]);
+  return { ticket: JSON.parse(JSON.stringify(ticket)), messages, evidence };
+}
+
+export async function getSupportChat(userId: string, ticketId: string, isAdmin: boolean) {
+  const { ticket, messages, evidence } = await getTicket(userId, ticketId, isAdmin);
+  return {
+    status: ticket.status,
+    messages: JSON.parse(JSON.stringify(messages)),
+    evidence: evidence.map((item) => ({
+      _id: String(item._id),
+      imageUrl: `/api/support/${ticketId}/evidence/${String(item._id)}`,
+    })),
+  };
 }

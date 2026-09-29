@@ -73,6 +73,7 @@ export function DepositForm({ minCoins, coinsPerRupee, feePercent }: {
           id="coins"
           type="number"
           min={minCoins}
+          step="0.01"
           value={coins}
           onChange={(e) => setCoins(Number(e.target.value))}
         />

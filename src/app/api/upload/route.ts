@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { uploadPrivateMedia } from "@/services/media.service";
 import { submitMatchEvidence } from "@/services/match.service";
 import { supportRepository } from "@/repositories/ops.repository";
-import { EvidenceKind } from "@/types/enums";
+import { EvidenceKind, UserRole } from "@/types/enums";
 import { connectDb } from "@/lib/db/mongoose";
 import { rateLimit } from "@/lib/rate-limit";
 import { AppError, toErrorMessage } from "@/lib/errors";
@@ -21,6 +21,21 @@ export async function POST(request: Request) {
     const purpose = String(form.get("purpose") ?? "other");
     if (purpose === "evidence" && !file.type.startsWith("image/")) {
       throw new AppError("Match evidence must be an image.", "INVALID_EVIDENCE", 400);
+    }
+    if (purpose === "support" && !file.type.startsWith("image/")) {
+      throw new AppError("Support attachments must be screenshots.", "INVALID_EVIDENCE", 400);
+    }
+    const ticketId = String(form.get("ticketId") ?? "");
+    if (purpose === "support") {
+      await connectDb();
+      const ticket = await supportRepository.findTicket(ticketId);
+      if (!ticket) throw new AppError("Ticket not found.", "NOT_FOUND", 404);
+      if (ticket.status === "resolved") {
+        throw new AppError("This support request has been closed.", "TICKET_CLOSED", 409);
+      }
+      if (session.user.role !== UserRole.ADMIN && String(ticket.userId) !== session.user.id) {
+        throw new AppError("You can only attach screenshots to your own request.", "FORBIDDEN", 403);
+      }
     }
     const folder = purpose === "evidence" ? "matches" : "support";
     const uploaded = await uploadPrivateMedia(file, folder);
@@ -41,14 +56,13 @@ export async function POST(request: Request) {
     }
 
     if (purpose === "support") {
-      await connectDb();
       await supportRepository.addEvidence({
-        ticketId: String(form.get("ticketId") ?? ""),
+        ticketId,
         userId: session.user.id,
         mediaUrl: uploaded.url,
         blobPathname: uploaded.pathname,
         mimeType: file.type,
-        kind: file.type.startsWith("video") ? "video" : "image",
+        kind: "image",
         expiresAt: uploaded.expiresAt,
       });
     }
@@ -56,6 +70,12 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, url: uploaded.url });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
-    return Response.json({ error: toErrorMessage(error) }, { status });
+    return Response.json(
+      {
+        error: toErrorMessage(error),
+        ...(error instanceof AppError ? { code: error.code, ...error.details } : {}),
+      },
+      { status },
+    );
   }
 }

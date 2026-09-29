@@ -16,6 +16,8 @@ const DisputeSchema = new Schema(
   { timestamps: true },
 );
 
+DisputeSchema.index({ status: 1, createdAt: -1 });
+
 export type DisputeDoc = InferSchemaType<typeof DisputeSchema> & { _id: Types.ObjectId };
 
 export const DisputeModel = models.Dispute || model("Dispute", DisputeSchema);

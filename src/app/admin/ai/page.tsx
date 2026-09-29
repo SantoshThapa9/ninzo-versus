@@ -24,6 +24,7 @@ export default async function AdminAiPage() {
             id="platformFeePercent"
             name="platformFeePercent"
             type="number"
+            step="0.01"
             defaultValue={settings.platformFeePercent}
           />
         </div>
@@ -33,12 +34,13 @@ export default async function AdminAiPage() {
             id="depositFeePercent"
             name="depositFeePercent"
             type="number"
+            step="0.01"
             defaultValue={settings.depositFeePercent}
           />
         </div>
         <div>
           <Label htmlFor="minDepositCoins">Minimum NV Token purchase</Label>
-          <Input id="minDepositCoins" name="minDepositCoins" type="number" defaultValue={settings.minDepositCoins} />
+          <Input id="minDepositCoins" name="minDepositCoins" type="number" step="0.01" defaultValue={settings.minDepositCoins} />
         </div>
         <div>
           <Label htmlFor="minWithdrawalCoins">Minimum reward redemption (NV Tokens)</Label>
@@ -46,6 +48,7 @@ export default async function AdminAiPage() {
             id="minWithdrawalCoins"
             name="minWithdrawalCoins"
             type="number"
+            step="0.01"
             defaultValue={settings.minWithdrawalCoins}
           />
         </div>

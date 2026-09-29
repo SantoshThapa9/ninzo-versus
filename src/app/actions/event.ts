@@ -40,7 +40,7 @@ export async function saveEventAction(_prev: { error?: string } | null, formData
       ? await updateEvent(session.user.id, eventId, payload)
       : await createEvent(session.user.id, payload);
     revalidatePath("/admin/events");
-    revalidatePath("/events");
+    revalidatePath("/matches");
     revalidatePath("/lobby");
     redirect(`/admin/events/${String(event._id)}`);
   } catch (error) {
@@ -57,7 +57,7 @@ export async function eventStatusAction(formData: FormData) {
     String(formData.get("status") ?? "") as EventStatus,
   );
   revalidatePath("/admin/events");
-  revalidatePath("/events");
+  revalidatePath("/matches");
   revalidatePath("/lobby");
 }
 
@@ -71,7 +71,7 @@ export async function eventRoomAction(formData: FormData) {
     String(formData.get("roomPassword") ?? ""),
   );
   revalidatePath("/admin/events");
-  revalidatePath("/events");
+  revalidatePath("/matches");
   revalidatePath("/lobby");
   revalidatePath(`/admin/events/${eventId}`);
   revalidatePath(`/events/${eventId}`);
@@ -84,7 +84,7 @@ export async function registerEventAction(_prev: { error?: string } | null, form
     await registerForEvent(session.user.id, {
       eventId,
     });
-    revalidatePath("/events");
+    revalidatePath("/matches");
     revalidatePath(`/events/${eventId}`);
     revalidatePath("/lobby");
     return { ok: true };
@@ -104,4 +104,5 @@ export async function payPrizesAction(formData: FormData) {
     .filter((row) => row.teamId);
   await payEventPrizes(session.user.id, eventId, placements);
   revalidatePath("/admin/events");
+  revalidatePath("/rank");
 }

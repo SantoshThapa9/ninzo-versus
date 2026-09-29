@@ -36,6 +36,8 @@ export async function sendMessageAction(_prev: { error?: string } | null, formDa
     const asAdmin = session.user.role === "admin" && formData.get("asAdmin") === "on";
     await sendTicketMessage(session.user.id, ticketId, body, asAdmin);
     revalidatePath(`/support/${ticketId}`);
+    revalidatePath(`/admin/support/${ticketId}`);
+    revalidatePath("/admin/support");
     return { ok: true };
   } catch (error) {
     return { error: toErrorMessage(error) };
@@ -43,10 +45,13 @@ export async function sendMessageAction(_prev: { error?: string } | null, formDa
 }
 
 export async function resolveTicketAction(formData: FormData) {
-  const session = await requireAdmin();
+  await requireAdmin();
+  const ticketId = String(formData.get("ticketId") ?? "");
   await connectDb();
-  await SupportTicketModel.findByIdAndUpdate(String(formData.get("ticketId") ?? ""), {
+  await SupportTicketModel.findByIdAndUpdate(ticketId, {
     status: SupportStatus.RESOLVED,
   });
   revalidatePath("/admin/support");
+  revalidatePath(`/admin/support/${ticketId}`);
+  revalidatePath(`/support/${ticketId}`);
 }
