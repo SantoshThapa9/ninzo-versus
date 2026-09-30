@@ -1,10 +1,16 @@
 import { z } from "zod";
+import type { ClientSession } from "mongoose";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { playerProfileRepository } from "@/repositories/player-profile.repository";
 import { userRepository } from "@/repositories/user.repository";
 
 const identitySchema = z.object({
+  displayName: z
+    .string()
+    .trim()
+    .min(2, "Display name must be at least 2 characters.")
+    .max(24),
   ign: z
     .string()
     .trim()
@@ -25,6 +31,27 @@ export async function getCurrentUserIdentity(userId: string) {
     ign: user?.ign ?? profile?.ign ?? "",
     uid: user?.uid ?? profile?.uid ?? "",
   };
+}
+
+async function applyDisplayNameIfChanged(
+  userId: string,
+  displayName: string,
+  session: ClientSession,
+) {
+  const user = await userRepository.findById(userId, session);
+  if (!user || user.displayName === displayName) return;
+  const renamed = await userRepository.updateDisplayNameIfAllowed(
+    userId,
+    displayName,
+    new Date(Date.now() - DAY_MS),
+    session,
+  );
+  if (!renamed) {
+    throw new AppError(
+      "You can change your display name once every 24 hours.",
+      "DISPLAY_NAME_CHANGE_LIMIT",
+    );
+  }
 }
 
 export async function savePlayerIdentity(userId: string, raw: unknown) {
@@ -49,6 +76,7 @@ export async function savePlayerIdentity(userId: string, raw: unknown) {
         input.uid,
         session,
       );
+      await applyDisplayNameIfChanged(userId, input.displayName, session);
       return profile;
     }
 
@@ -62,6 +90,7 @@ export async function savePlayerIdentity(userId: string, raw: unknown) {
         input.uid,
         session,
       );
+      await applyDisplayNameIfChanged(userId, input.displayName, session);
       return existing;
     }
 
@@ -90,6 +119,7 @@ export async function savePlayerIdentity(userId: string, raw: unknown) {
       input.uid,
       session,
     );
+    await applyDisplayNameIfChanged(userId, input.displayName, session);
     return updated;
   });
 }

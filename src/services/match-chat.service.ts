@@ -12,7 +12,9 @@ import {
   expireMatchAfterChatTimeout,
   finalizeMatchEvidence,
 } from "@/services/match.service";
+import { resolveExtractedWinner } from "@/services/ai.service";
 import { getCurrentUserIdentity } from "@/services/player-profile.service";
+import { isSenderOnlyChatMessage, publicChatBody } from "@/lib/chat-moderation";
 
 const messageSchema = z
   .string()
@@ -20,43 +22,15 @@ const messageSchema = z
   .min(1, "Write a message first.")
   .max(1000);
 
-function normalizeIgn(value?: string) {
-  return value?.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, "") ?? "";
-}
-
-function normalizeRoomId(value?: string) {
-  const raw = value?.trim() ?? "";
-  const normalized = raw.toLocaleUpperCase().replace(/[^A-Z0-9#]/g, "");
-  const hashIndex = normalized.indexOf("#");
-  if (hashIndex === -1) return normalized.replace(/[^0-9]/g, "").slice(-7);
-  const beforeHash = normalized.slice(0, hashIndex);
-  const digits = beforeHash.replace(/[^0-9]/g, "");
-  return digits.slice(-7) || normalized.slice(-7);
-}
-
-function fuzzyIgnMatches(left?: string, right?: string) {
-  const a = normalizeIgn(left);
-  const b = normalizeIgn(right);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  if (a.includes(b) || b.includes(a)) return true;
-  const minLength = Math.min(a.length, b.length);
-  if (minLength <= 2) return false;
-  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-  for (const char of a) {
-    const current = [previous[0] + 1];
-    for (let index = 1; index <= b.length; index += 1) {
-      const deleteCost = current[index - 1] + 1;
-      const insertCost = previous[index] + 1;
-      const replaceCost = previous[index - 1] + (char === b[index - 1] ? 0 : 1);
-      current[index] = Math.min(deleteCost, insertCost, replaceCost);
-    }
-    previous = current;
-  }
-  const distance = previous[b.length];
-  const maxLength = Math.max(a.length, b.length);
-  return maxLength > 0 && (maxLength - distance) / maxLength >= 0.7;
-}
+// function normalizeRoomId(value?: string) {
+//   const raw = value?.trim() ?? "";
+//   const normalized = raw.toLocaleUpperCase().replace(/[^A-Z0-9#]/g, "");
+//   const hashIndex = normalized.indexOf("#");
+//   if (hashIndex === -1) return normalized.replace(/[^0-9]/g, "").slice(-7);
+//   const beforeHash = normalized.slice(0, hashIndex);
+//   const digits = beforeHash.replace(/[^0-9]/g, "");
+//   return digits.slice(-7) || normalized.slice(-7);
+// }
 
 async function getParticipantMatch(userId: string, matchId: string) {
   const match = await matchRepository.findById(matchId);
@@ -189,13 +163,16 @@ export async function getMatchChat(userId: string, matchId: string) {
   const failedUploadAttempts = isEvidenceMode
     ? await evidenceAttemptRepository.countFailures(matchId, userId)
     : 0;
-  const extractedResult = myAnalysis?.winnerIGN
-    ? fuzzyIgnMatches(myAnalysis.winnerIGN, currentPlayerIgn)
+  const extractedWinner = resolveExtractedWinner(myAnalysis?.winnerIGN, [
+    currentPlayerIgn,
+    opponentIgn,
+  ]);
+  const extractedResult =
+    extractedWinner === currentPlayerIgn
       ? "win"
-      : fuzzyIgnMatches(myAnalysis.winnerIGN, opponentIgn)
+      : extractedWinner === opponentIgn
         ? "loss"
-        : undefined
-    : undefined;
+        : undefined;
   const provisionalResult = myAnalysis?.winnerIGN ? extractedResult : undefined;
   return {
     expiresAt,
@@ -227,10 +204,21 @@ export async function getMatchChat(userId: string, matchId: string) {
       : [],
     messages: JSON.parse(
       JSON.stringify(
-        messages.map((message) => ({
-          ...message,
-          senderName: nameBySenderId.get(String(message.senderId)) ?? "Player",
-        })),
+        messages
+          .filter((message) => {
+            const senderId = String(message.senderId);
+            if (senderId === userId) return true;
+            return !isSenderOnlyChatMessage(
+              message.body,
+              Boolean(message.senderOnly),
+            );
+          })
+          .map((message) => ({
+            ...message,
+            body: publicChatBody(message.body),
+            senderName:
+              nameBySenderId.get(String(message.senderId)) ?? "Player",
+          })),
       ),
     ),
   };
@@ -241,15 +229,23 @@ export async function sendMatchChatMessage(
   matchId: string,
   rawBody: string,
 ) {
-  const body = messageSchema.parse(rawBody);
+  const parsed = messageSchema.parse(rawBody);
+  const senderOnly = isSenderOnlyChatMessage(parsed);
+  const body = senderOnly ? publicChatBody(parsed) : parsed;
   await connectDb();
   const expiresAt = await assertChatOpen(userId, matchId);
   const message = await MatchChatMessageModel.create({
     matchId,
     senderId: userId,
     body,
+    senderOnly,
     expiresAt,
   });
   const user = await UserModel.findById(userId).select("ign").lean();
-  return { ...message.toObject(), senderName: user?.ign || "Player" };
+  const created = message.toObject();
+  return {
+    ...created,
+    body: publicChatBody(created.body),
+    senderName: user?.ign || "Player",
+  };
 }

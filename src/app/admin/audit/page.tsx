@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 
 export default async function AdminAuditPage() {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   await connectDb();
   const logs = await auditRepository.list();
 

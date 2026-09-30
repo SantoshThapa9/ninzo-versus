@@ -38,6 +38,25 @@ export const userRepository = {
       { returnDocument: "after", session },
     );
   },
+  updateDisplayNameIfAllowed(
+    id: string,
+    displayName: string,
+    cutoff: Date,
+    session?: Session,
+  ) {
+    return UserModel.findOneAndUpdate(
+      {
+        _id: id,
+        $or: [
+          { displayNameUpdatedAt: { $exists: false } },
+          { displayNameUpdatedAt: null },
+          { displayNameUpdatedAt: { $lte: cutoff } },
+        ],
+      },
+      { $set: { displayName, displayNameUpdatedAt: new Date() } },
+      { returnDocument: "after", session },
+    );
+  },
   list(filter: Record<string, unknown> = {}, limit = 50) {
     return UserModel.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
   },

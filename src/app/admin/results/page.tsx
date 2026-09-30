@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 
 export default async function AdminResultsPage() {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   await connectDb();
   const submissions = await ResultSubmissionModel.find().sort({ createdAt: -1 }).limit(50).lean();
 

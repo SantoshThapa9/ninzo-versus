@@ -69,7 +69,8 @@ export const WithdrawalStatus = {
   REJECTED: "rejected",
   PAID: "paid",
 } as const;
-export type WithdrawalStatus = (typeof WithdrawalStatus)[keyof typeof WithdrawalStatus];
+export type WithdrawalStatus =
+  (typeof WithdrawalStatus)[keyof typeof WithdrawalStatus];
 
 export const SupportStatus = {
   AI_ACTIVE: "ai_active",

@@ -38,50 +38,139 @@ export default async function ProfilePage() {
           {user?.displayName ?? session?.user?.name ?? "Your player profile"}
         </h1>
         <p className="mb-4 text-sm text-[var(--muted)]">
-          {user?.email ?? session?.user?.email ?? "Sign in to save your game details."}
+          {user?.email ??
+            session?.user?.email ??
+            "Sign in to save your game details."}
         </p>
         <p className="mb-4 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-sm text-[var(--muted)]">
-          You can update your In Game Name and Free Fire UID once every 24 hours. Changes appear in active matches, private chat, and booked tournaments; completed match records keep their original names.
+          You can update your display name, In Game Name, and Free Fire UID
+          once every 24 hours.
         </p>
-        {userId ? <ActionForm action={saveProfileAction} submitLabel="Save profile">
-          <div>
-            <Label htmlFor="ign">In Game Name</Label>
-            <Input id="ign" name="ign" defaultValue={ign} required data-tour="ign" />
+        <details className="mt-2 mb-2 rounded-lg border border-white/10 bg-white/[0.03] text-sm">
+          <summary className="flex cursor-pointer items-center justify-between px-3 py-2.5 text-muted transition-colors hover:text-foreground">
+            <span className="flex items-center gap-2">
+              <span className="text-accent">ⓘ</span>
+              In-game name format
+            </span>
+
+            <span className="text-xs opacity-60">▼</span>
+          </summary>
+
+          <div className="border-t border-white/10  pb-3 pt-2.5 leading-relaxed text-muted">
+            <p className="px-3">
+              Exact in-game name is not required. Please enter your full in-game
+              name as accurately as possible.
+            </p>
+            <div className="mt-2 rounded-md bg-black/20 px-2.5 py-2">
+              <p className="text-xs text-muted">Example:</p>
+              <p className="mt-1 font-mono text-foreground">
+                ᶜᵐ ₦Ї₦ƵØ ʟɪᴠᴇ! ➜ cm ninzo live!
+              </p>
+            </div>
           </div>
-          <div>
-            <Label htmlFor="uid">Free Fire UID</Label>
-            <Input id="uid" name="uid" defaultValue={uid} data-tour="uid" />
-          </div>
-        </ActionForm> : <>
-          <div className="grid gap-4">
+        </details>
+        {userId ? (
+          <ActionForm action={saveProfileAction} submitLabel="Save profile">
+            <div>
+              <Label htmlFor="displayName">Display name</Label>
+              <Input
+                id="displayName"
+                name="displayName"
+                defaultValue={user?.displayName ?? ""}
+                required
+                maxLength={24}
+              />
+            </div>
             <div>
               <Label htmlFor="ign">In Game Name</Label>
-              <Input id="ign" disabled placeholder="Your Free Fire name" data-tour="ign" />
+              <Input
+                id="ign"
+                name="ign"
+                defaultValue={ign}
+                required
+                data-tour="ign"
+              />
             </div>
             <div>
               <Label htmlFor="uid">Free Fire UID</Label>
-              <Input id="uid" disabled placeholder="Your Free Fire UID" data-tour="uid" />
+              <Input id="uid" name="uid" defaultValue={uid} data-tour="uid" />
             </div>
-          </div>
-          <Button asChild size="full"><Link href="/login?callbackUrl=/profile">Sign in to save profile</Link></Button>
-        </>}
+          </ActionForm>
+        ) : (
+          <>
+            <div className="grid gap-4">
+              <div>
+                <Label htmlFor="displayName">Display name</Label>
+                <Input
+                  id="displayName"
+                  disabled
+                  placeholder="Shown on rankings"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ign">In Game Name</Label>
+                <Input
+                  id="ign"
+                  disabled
+                  placeholder="Your Free Fire name"
+                  data-tour="ign"
+                />
+              </div>
+              <div>
+                <Label htmlFor="uid">Free Fire UID</Label>
+                <Input
+                  id="uid"
+                  disabled
+                  placeholder="Your Free Fire UID"
+                  data-tour="uid"
+                />
+              </div>
+            </div>
+            <Button asChild size="full">
+              <Link href="/login?callbackUrl=/profile">
+                Sign in to save profile
+              </Link>
+            </Button>
+          </>
+        )}
       </Card>
-      {playerRank ? (() => {
-        const rank = getRank(playerRank.winRate);
-        return (
-          <Card className="border-[var(--accent)]/25">
-            <div className="flex items-center justify-between gap-3">
-              <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--muted)]">Your rank</p><p className={`mt-1 flex items-center gap-2 text-xl font-extrabold ${rank.className}`}><Medal size={20} />{playerRank.rank}</p></div>
-              <div className="text-right"><p className="text-2xl font-extrabold">{playerRank.winRate}%</p><p className="text-xs text-[var(--muted)]">{playerRank.wins} wins / {playerRank.matches} matches</p></div>
-            </div>
-          </Card>
-        );
-      })() : null}
-      {userId ? <form action={logoutAction}>
-        <Button type="submit" variant="secondary" size="full">
-          Sign out
-        </Button>
-      </form> : null}
+      {playerRank
+        ? (() => {
+            const rank = getRank(playerRank.winRate);
+            return (
+              <Card className="border-[var(--accent)]/25">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--muted)]">
+                      Your rank
+                    </p>
+                    <p
+                      className={`mt-1 flex items-center gap-2 text-xl font-extrabold ${rank.className}`}
+                    >
+                      <Medal size={20} />
+                      {playerRank.rank}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-extrabold">
+                      {playerRank.winRate}%
+                    </p>
+                    <p className="text-xs text-[var(--muted)]">
+                      {playerRank.wins} wins / {playerRank.matches} matches
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            );
+          })()
+        : null}
+      {userId ? (
+        <form action={logoutAction}>
+          <Button type="submit" variant="secondary" size="full">
+            Sign out
+          </Button>
+        </form>
+      ) : null}
     </div>
   );
 }

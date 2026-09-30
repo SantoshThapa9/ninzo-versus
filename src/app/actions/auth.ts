@@ -14,7 +14,7 @@ export async function registerAction(_prev: { error?: string } | null, formData:
     const displayName = String(formData.get("displayName") ?? "");
     if (password.length < 8) return { error: "Password must be at least 8 characters." };
     await registerUser(email, password, displayName);
-    await signIn("credentials", { email, password, redirectTo: "/lobby" });
+    await signIn("credentials", { email, password, redirectTo: "/" });
     return { ok: true };
   } catch (error) {
     if (isNextRedirect(error)) throw error;
@@ -27,7 +27,7 @@ export async function loginAction(_prev: { error?: string } | null, formData: Fo
     await rateLimit("auth:login", 12, 60);
     const email = String(formData.get("email") ?? "");
     const password = String(formData.get("password") ?? "");
-    await signIn("credentials", { email, password, redirectTo: "/lobby" });
+    await signIn("credentials", { email, password, redirectTo: "/" });
     return { ok: true };
   } catch (error) {
     if (isNextRedirect(error)) throw error;

@@ -23,7 +23,7 @@ function formatDateTime(value?: string | Date) {
 
 export default async function AdminSupportTicketPage({ params }: PageProps<"/admin/support/[id]">) {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
 
   const { id } = await params;
   const { ticket } = await getTicket(session.user.id, id, true);

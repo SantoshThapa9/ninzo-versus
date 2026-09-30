@@ -12,7 +12,7 @@ const AIConfigurationSchema = new Schema(
     key: { type: String, required: true, unique: true, default: "global" },
     visionEnabled: { type: Boolean, default: true },
     supportAiEnabled: { type: Boolean, default: true },
-    visionModel: { type: String, default: "gpt-5-nano" },
+    visionModel: { type: String, default: "gpt-5.6-luna" },
     chatModel: { type: String, default: "gpt-5-nano" },
     nvCoinsPerRupee: {
       type: Number,

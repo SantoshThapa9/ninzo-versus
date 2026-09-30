@@ -6,6 +6,7 @@ const UserSchema = new Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
     displayName: { type: String, required: true, trim: true },
+    displayNameUpdatedAt: { type: Date },
     // Mirrored from PlayerProfile so the user's in-game identity is available
     // directly on the user document as well.
     ign: { type: String, trim: true },
@@ -24,4 +25,9 @@ UserSchema.index({ role: 1 });
 
 export type UserDoc = InferSchemaType<typeof UserSchema> & { _id: Types.ObjectId };
 
-export const UserModel = models.User || model("User", UserSchema);
+const cachedUserModel = models.User;
+if (cachedUserModel && !cachedUserModel.schema.path("displayNameUpdatedAt")) {
+  cachedUserModel.schema.add({ displayNameUpdatedAt: { type: Date } });
+}
+
+export const UserModel = cachedUserModel || model("User", UserSchema);

@@ -15,7 +15,7 @@ const links = [
 
 export default async function AdminHome() {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   return (
     <div className="grid gap-3">
       <h1 className="text-2xl font-bold">Admin</h1>

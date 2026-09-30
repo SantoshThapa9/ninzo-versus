@@ -10,7 +10,7 @@ import { reviewWithdrawalAction } from "@/app/actions/wallet";
 
 export default async function AdminWithdrawalsPage() {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   const withdrawals = await listWithdrawals();
 
   return (

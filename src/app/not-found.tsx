@@ -6,7 +6,7 @@ export default function NotFound() {
     <div className="grid gap-4 py-16 text-center">
       <h1 className="text-2xl font-bold">Page not found</h1>
       <Button asChild>
-        <Link href="/lobby">Back to lobby</Link>
+        <Link href="/">Back to lobby</Link>
       </Button>
     </div>
   );

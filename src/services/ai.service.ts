@@ -54,37 +54,91 @@ export type MatchValidation = {
   reason?: string;
 };
 
-/** Third and final AI call: validates saved extractions only, never re-reads images. */
-export async function validateMatchExtractions(input: {
+function normalizeIgnForMatch(value: unknown) {
+  return typeof value === "string"
+    ? value.toLocaleLowerCase().replace(/[^a-z0-9]/g, "")
+    : "";
+}
+
+/**
+ * Matches an extracted winner IGN to a registered IGN after normalization.
+ * A partial match is only accepted when they share a contiguous, meaningful
+ * (four-or-more character) normalized portion.
+ */
+export function extractedIgnMatchesPlayer(
+  extractedIgn: unknown,
+  playerIgn: unknown,
+) {
+  const extracted = normalizeIgnForMatch(extractedIgn);
+  const player = normalizeIgnForMatch(playerIgn);
+  if (!extracted || !player) return false;
+  if (extracted === player) return true;
+
+  // A Free Fire IGN can be horizontally clipped while its name marquee
+  // scrolls, and OCR can add an extra character at either clipped edge. Find
+  // the longest contiguous normalized run shared by both values instead of
+  // accepting scattered-character matches.
+  let longestRun = 0;
+  let previous = Array.from({ length: player.length + 1 }, () => 0);
+  for (const extractedCharacter of extracted) {
+    const current = [0];
+    for (let index = 1; index <= player.length; index += 1) {
+      const run =
+        extractedCharacter === player[index - 1] ? previous[index - 1] + 1 : 0;
+      current[index] = run;
+      longestRun = Math.max(longestRun, run);
+    }
+    previous = current;
+  }
+
+  // Four characters prevents a one-character coincidence while allowing
+  // examples such as "uraj f" and OCR-edge-clipped "n SURAJ" to match the
+  // registered IGN "cm suraj ff" through their contiguous shared fragments.
+  return longestRun >= 4;
+}
+
+/** Resolves an extracted IGN to one unambiguous registered player IGN. */
+export function resolveExtractedWinner(
+  extractedIgn: unknown,
+  playerIgns: readonly string[],
+) {
+  const matches = playerIgns.filter((playerIgn) =>
+    extractedIgnMatchesPlayer(extractedIgn, playerIgn),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** Validates the two Vision API extractions without making another AI request. */
+export function validateMatchScreenshots(input: {
   first: VisionResult;
   second: VisionResult;
   players: string[];
-  question?: string;
-}): Promise<MatchValidation | undefined> {
-  const settings = await getPlatformSettings();
-  const openai = client();
-  if (!settings.visionEnabled || !openai) return undefined;
-  const model = settings.visionModel || "gpt-5.6-luna";
-  const comparisonQuestion =
-    input.question ??
-    `Do both screenshots match the same final result and same winner for these players? Use the extracted roomId and winnerIGN values only. If the winner is not clearly the same in both screenshots, return valid=false.`;
-  try {
-    const response = await openai.responses.create({
-      model,
-      store: false,
-      input: `Use plain-text JSON only. ${comparisonQuestion} Ignore case and symbols in names; accept clipped or partial IGN matches. Return only JSON {"valid":true|false,"winner":"player name or empty","reason":"short"}. Data: ${JSON.stringify(
-        {
-          ...input,
-        },
-      )}`,
-    });
-    return JSON.parse(
-      (response.output_text ?? "").replace(/```json|```/g, "").trim(),
-    ) as MatchValidation;
-  } catch (error) {
-    logVisionRequestError(error, model);
-    return undefined;
+}): MatchValidation {
+  const firstRoomId = extractRoomIdBeforeHash(input.first.roomId);
+  const secondRoomId = extractRoomIdBeforeHash(input.second.roomId);
+  if (!firstRoomId || !secondRoomId) {
+    return { valid: false, reason: "room ID unreadable" };
   }
+  if (firstRoomId !== secondRoomId) {
+    return { valid: false, reason: "room IDs differ" };
+  }
+
+  const firstWinner = resolveExtractedWinner(
+    input.first.winnerIGN,
+    input.players,
+  );
+  const secondWinner = resolveExtractedWinner(
+    input.second.winnerIGN,
+    input.players,
+  );
+  if (!firstWinner || !secondWinner) {
+    return { valid: false, reason: "winner IGN unreadable or unregistered" };
+  }
+  if (firstWinner !== secondWinner) {
+    return { valid: false, reason: "winners differ" };
+  }
+
+  return { valid: true, winner: firstWinner };
 }
 
 export async function analyzeMatchScreenshot(
@@ -242,16 +296,16 @@ INVENTORY page:
 Shows NV Token balance, reserved tokens, token purchases, and reward redemption.
 
 PROFILE page:
-Shows the player's rank, win rate, wins, and settled matches. Free Fire in-game name and UID can be changed once every 24 hours.
+Shows the player's rank, win rate, wins, and settled matches. Display name, Free Fire in-game name, and UID can each be changed once every 24 hours.
 
 RANKS page:
 Based on winning rate:
-Rookie ≤50%
-Elite 60%
-Champion 70%
-Mythic 80%
-Legend 90%
-Immortal 100%
+Rookie ≤49%
+Elite 50–59%
+Champion 60–69%
+Mythic 70–79%
+Legend 80–89%
+Immortal 90–100%
 
 NAVIGATION:
 Clash, Matches, Inventory, Support, Rank, Me/Profile.

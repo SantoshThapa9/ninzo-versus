@@ -28,7 +28,7 @@ function formatDate(value?: string | Date) {
 
 export default async function AdminMatchesPage() {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   await connectDb();
   const matches = await matchRepository.list({});
   const matchesWithEvidence = await Promise.all(

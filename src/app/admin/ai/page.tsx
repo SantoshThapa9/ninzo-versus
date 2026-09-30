@@ -11,7 +11,7 @@ import { saveSettingsAction } from "@/app/actions/wallet";
 
 export default async function AdminAiPage() {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   const settings = await getPlatformSettings();
 
   return (

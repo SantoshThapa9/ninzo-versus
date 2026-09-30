@@ -5,6 +5,7 @@ const MatchChatMessageSchema = new Schema(
     matchId: { type: Schema.Types.ObjectId, ref: "Match", required: true },
     senderId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     body: { type: String, required: true, trim: true, maxlength: 1000 },
+    senderOnly: { type: Boolean, default: false },
     expiresAt: { type: Date, required: true },
   },
   { timestamps: true },

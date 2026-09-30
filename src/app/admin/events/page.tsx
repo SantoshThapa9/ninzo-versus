@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 
 export default async function AdminEventsPage() {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   await connectDb();
   const events = await eventRepository.listAll();
 

@@ -26,7 +26,8 @@ import {
 import { CoinTxnType, EvidenceKind, MatchStatus } from "@/types/enums";
 import {
   analyzeMatchScreenshot,
-  validateMatchExtractions,
+  extractedIgnMatchesPlayer,
+  validateMatchScreenshots,
   type VisionResult,
 } from "@/services/ai.service";
 import { getCurrentUserIdentity } from "@/services/player-profile.service";
@@ -298,10 +299,6 @@ export async function setMatchLive(
   return match;
 }
 
-function normalizeIgn(value?: string) {
-  return value?.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, "") ?? "";
-}
-
 function normalizeRoomId(value?: string) {
   const normalized =
     value?.toLocaleUpperCase().replace(/[^A-Z0-9#]/g, "") ?? "";
@@ -316,30 +313,6 @@ function normalizeWinnerIgn(value?: string) {
   if (!ign || ["WARBRINGERS", "HOWLERS"].includes(ign.toLocaleUpperCase()))
     return undefined;
   return ign;
-}
-
-function fuzzyIgnMatches(left?: string, right?: string) {
-  const a = normalizeIgn(left);
-  const b = normalizeIgn(right);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  if (a.includes(b) || b.includes(a)) return true;
-  const minLength = Math.min(a.length, b.length);
-  if (minLength <= 2) return false;
-  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-  for (const char of a) {
-    const current = [previous[0] + 1];
-    for (let index = 1; index <= b.length; index += 1) {
-      const deleteCost = current[index - 1] + 1;
-      const insertCost = previous[index] + 1;
-      const replaceCost = previous[index - 1] + (char === b[index - 1] ? 0 : 1);
-      current[index] = Math.min(deleteCost, insertCost, replaceCost);
-    }
-    previous = current;
-  }
-  const distance = previous[b.length];
-  const maxLength = Math.max(a.length, b.length);
-  return maxLength > 0 && (maxLength - distance) / maxLength >= 0.7;
 }
 
 export async function submitMatchEvidence(
@@ -393,16 +366,22 @@ export async function submitMatchEvidence(
     // Each rejection is its own durable record. Counting records avoids
     // Mongoose document-array caching during Next.js development reloads.
     await evidenceAttemptRepository.recordFailure({ matchId, userId, reason });
-    const attempt = await evidenceAttemptRepository.countFailures(matchId, userId);
+    const attempt = await evidenceAttemptRepository.countFailures(
+      matchId,
+      userId,
+    );
 
     if (attempt < 3) {
       try {
         await deletePrivateMedia(blobPathname);
       } catch {
-        console.error("[match-ai] Could not remove rejected screenshot upload.", {
-          matchId,
-          userId,
-        });
+        console.error(
+          "[match-ai] Could not remove rejected screenshot upload.",
+          {
+            matchId,
+            userId,
+          },
+        );
       }
       const remaining = 3 - attempt;
       throw new AppError(
@@ -541,13 +520,20 @@ export async function submitMatchEvidence(
     userId,
   });
 
-  const personalResult = analysis.winnerIGN
-    ? fuzzyIgnMatches(analysis.winnerIGN, platformIgn)
+  const winnerMatchesPlayer = extractedIgnMatchesPlayer(
+    analysis.winnerIGN,
+    platformIgn,
+  );
+  const winnerMatchesOpponent = extractedIgnMatchesPlayer(
+    analysis.winnerIGN,
+    opponentIgn,
+  );
+  const personalResult =
+    winnerMatchesPlayer && !winnerMatchesOpponent
       ? ("win" as const)
-      : opponentIgn && fuzzyIgnMatches(analysis.winnerIGN, opponentIgn)
+      : winnerMatchesOpponent && !winnerMatchesPlayer
         ? ("loss" as const)
-        : undefined
-    : undefined;
+        : undefined;
 
   await MatchModel.findByIdAndUpdate(matchId, {
     $set: {
@@ -629,15 +615,13 @@ export async function finalizeMatchEvidence(matchId: string) {
           rawRoomId: opponentEvidence.aiAnalysis?.roomId ?? null,
         },
       });
-      const sameName = (left?: string, right?: string) =>
-        fuzzyIgnMatches(left, right);
       const sameRoom = (left?: string, right?: string) => {
         const a = normalizeRoomId(left);
         const b = normalizeRoomId(right);
         return Boolean(a && b && a === b);
       };
       // Confidence is useful for observability, but it is not reliable enough
-      // to override two matching extractions and the dedicated final validator.
+      // to override two complete Vision API extractions.
       const complete = (result?: VisionResult) =>
         Boolean(
           result && normalizeRoomId(result.roomId) && result.winnerIGN?.trim(),
@@ -651,24 +635,19 @@ export async function finalizeMatchEvidence(matchId: string) {
       )?.ign;
       const validation =
         creatorResult && opponentResult
-          ? await validateMatchExtractions({
+          ? validateMatchScreenshots({
               first: creatorResult,
               second: opponentResult,
               players: [creatorIgn ?? "", opponentIgn ?? ""],
-              question:
-                "Do both screenshots match the same final result and winner? The extracted roomId must be the same at the bottom-left, and the winnerIGN must match the same player name in both images. If the winner is not the same in both screenshots, return valid=false.",
             })
           : undefined;
       const common =
         complete(creatorResult) &&
         complete(opponentResult) &&
         sameRoom(creatorResult?.roomId, opponentResult?.roomId) &&
-        sameName(creatorResult?.winnerIGN, opponentResult?.winnerIGN) &&
         validation?.valid;
-      const creatorWon =
-        common && fuzzyIgnMatches(creatorResult?.winnerIGN, creatorIgn);
-      const opponentWon =
-        common && fuzzyIgnMatches(creatorResult?.winnerIGN, opponentIgn);
+      const creatorWon = common && validation?.winner === creatorIgn;
+      const opponentWon = common && validation?.winner === opponentIgn;
       const winnerTeam = creatorWon ? "A" : opponentWon ? "B" : undefined;
       console.info("[match-ai] Final verification inputs and checks.", {
         matchId,
@@ -685,11 +664,8 @@ export async function finalizeMatchEvidence(matchId: string) {
         snapshotPlayers: { creatorIgn, opponentIgn },
         checks: {
           sameRoom: sameRoom(creatorResult?.roomId, opponentResult?.roomId),
-          sameWinner: sameName(
-            creatorResult?.winnerIGN,
-            opponentResult?.winnerIGN,
-          ),
-          validatorValid: validation?.valid ?? false,
+          sameRegisteredWinner: Boolean(validation?.valid),
+          validationReason: validation?.reason ?? null,
           creatorWon,
           opponentWon,
         },
@@ -762,7 +738,7 @@ export async function finalizeMatchEvidence(matchId: string) {
       {
         matchId,
         screenshotCount: resultEvidence.length,
-        playerCount: resultUploaders.size,
+        uploadedByPlayerCount: resultUploaders.size,
       },
     );
   }

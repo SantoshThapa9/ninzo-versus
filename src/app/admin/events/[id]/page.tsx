@@ -14,7 +14,7 @@ const workflowStatuses = [EventStatus.PUBLISHED, EventStatus.LIVE, EventStatus.C
 
 export default async function AdminEventDetailPage({ params }: PageProps<"/admin/events/[id]">) {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   const { id } = await params;
   const { event, teams } = await getEventDetail(id, true);
 

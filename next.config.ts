@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactCompiler: true,
   // next.config.ts
-  allowedDevOrigins: ["10-48-140-238.sslip.io"],
+  allowedDevOrigins: ["10.136.111.238.sslip.io"],
   sassOptions: {
     includePaths: [path.join(process.cwd(), "src/styles")],
   },
@@ -13,8 +13,14 @@ const nextConfig: NextConfig = {
       {
         source: "/sw.js",
         headers: [
-          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
-          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          {
+            key: "Content-Type",
+            value: "application/javascript; charset=utf-8",
+          },
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
           { key: "Service-Worker-Allowed", value: "/" },
         ],
       },

@@ -6,7 +6,7 @@ import { EventBuilderForm } from "@/components/admin/event-builder-form";
 
 export default async function NewEventPage() {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   return (
     <Card>
       <h1 className="mb-4 text-2xl font-bold">Event builder</h1>

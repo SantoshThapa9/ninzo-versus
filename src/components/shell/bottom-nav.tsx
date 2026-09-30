@@ -13,7 +13,7 @@ import {
 import styles from "./bottom-nav.module.scss";
 
 const items = [
-  { href: "/lobby", label: "Clash", icon: Gamepad2 },
+  { href: "/", label: "Lobby", icon: Gamepad2 },
   { href: "/matches", label: "Matches", icon: MessagesSquare },
   { href: "/rank", label: "Rank", icon: Medal },
   { href: "/inventory", label: "Inventory", icon: Package },
@@ -33,7 +33,7 @@ export function BottomNav() {
           <Link
             key={item.href}
             href={item.href}
-            data-tour={item.href === "/lobby" ? "clash-nav" : undefined}
+            data-tour={item.href === "/" ? "clash-nav" : undefined}
             className={`${styles.item} ${active ? styles.active : ""}`}
           >
             <Icon size={20} />

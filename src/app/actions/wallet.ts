@@ -46,11 +46,12 @@ export async function saveProfileAction(_prev: { error?: string; ok?: boolean } 
   try {
     const session = await requireSession();
     await savePlayerIdentity(session.user.id, {
+      displayName: String(formData.get("displayName") ?? ""),
       ign: String(formData.get("ign") ?? ""),
       uid: String(formData.get("uid") ?? ""),
     });
     revalidatePath("/profile");
-    revalidatePath("/lobby");
+    revalidatePath("/");
     revalidatePath("/challenges");
     revalidatePath("/matches");
     revalidatePath("/rank");

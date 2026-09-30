@@ -15,11 +15,14 @@ export default async function NewClashPage() {
 
   return (
     <Card>
-      <h1 className="mb-3 text-2xl font-bold">
-        Create a competitive challenge
-      </h1>
-      <p className="mb-4 text-sm text-[var(--danger)]">
-        {settings.clashWarning}
+      <h1 className="mb-3 text-2xl font-bold">Create a challenge post</h1>
+
+      <p className="mb-4 flex items-center gap-3 rounded-xl border border-amber-400 bg-amber-400/10 px-4 py-3 text-sm font-medium text-amber-300">
+        <span className="text-lg">⚠</span>
+        <span>
+          After the match: Both the winner and loser must upload a result
+          screenshot.
+        </span>
       </p>
       <ActionForm
         action={createMatchAction}
@@ -39,9 +42,13 @@ export default async function NewClashPage() {
             ))}
           </select>
         </div>
+        <p className="text-sm text-[var(--muted)]">
+          Opponent will choose challenge tokens from the minimum to the maximum.
+        </p>
+
         <div>
           <Label htmlFor="stakeMin">
-            Minimum Challenge (NV Tokens) — minimum 5
+            Minimum Challenge Tokens (min {ECONOMY_DEFAULTS.minMatchStakeCoins})
           </Label>
           <Input
             id="stakeMin"
@@ -53,7 +60,7 @@ export default async function NewClashPage() {
           />
         </div>
         <div>
-          <Label htmlFor="stakeMax">Maximum Challenge (NV Tokens)</Label>
+          <Label htmlFor="stakeMax">Maximum Challenge Tokens</Label>
           <Input
             id="stakeMax"
             name="stakeMax"
@@ -70,7 +77,7 @@ export default async function NewClashPage() {
         <div className="space-y-2 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" name="onlyHeadshots" className="mt-0.5" />
-            Only headshots allowed
+            Only headshots
           </label>
           <label className="flex items-center gap-2">
             <input
@@ -78,7 +85,7 @@ export default async function NewClashPage() {
               name="characterSkillAllowed"
               className="mt-0.5"
             />
-            Character skill allowed
+            Character skill
           </label>
         </div>
         <label className="flex items-start gap-2 text-sm">

@@ -30,7 +30,7 @@ export async function createMatchAction(_prev: { error?: string } | null, formDa
       rules,
       warningAcknowledged: formData.get("warning") === "on",
     });
-    revalidatePath("/lobby");
+    revalidatePath("/");
     redirect(`/clash/${String(match._id)}`);
   } catch (error) {
     if (isNextRedirect(error)) throw error;
@@ -47,7 +47,7 @@ export async function acceptMatchAction(_prev: { error?: string } | null, formDa
       stake: Number(formData.get("stake")),
       warningAcknowledged: formData.get("warning") === "on",
     });
-    revalidatePath("/lobby");
+    revalidatePath("/");
     revalidatePath("/challenges");
     redirect(`/clash/${String(formData.get("matchId") ?? "")}`);
   } catch (error) {

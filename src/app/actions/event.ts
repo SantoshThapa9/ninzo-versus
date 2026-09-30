@@ -41,7 +41,7 @@ export async function saveEventAction(_prev: { error?: string } | null, formData
       : await createEvent(session.user.id, payload);
     revalidatePath("/admin/events");
     revalidatePath("/matches");
-    revalidatePath("/lobby");
+    revalidatePath("/");
     redirect(`/admin/events/${String(event._id)}`);
   } catch (error) {
     if (isNextRedirect(error)) throw error;
@@ -58,7 +58,7 @@ export async function eventStatusAction(formData: FormData) {
   );
   revalidatePath("/admin/events");
   revalidatePath("/matches");
-  revalidatePath("/lobby");
+  revalidatePath("/");
 }
 
 export async function eventRoomAction(formData: FormData) {
@@ -72,7 +72,7 @@ export async function eventRoomAction(formData: FormData) {
   );
   revalidatePath("/admin/events");
   revalidatePath("/matches");
-  revalidatePath("/lobby");
+  revalidatePath("/");
   revalidatePath(`/admin/events/${eventId}`);
   revalidatePath(`/events/${eventId}`);
 }
@@ -86,7 +86,7 @@ export async function registerEventAction(_prev: { error?: string } | null, form
     });
     revalidatePath("/matches");
     revalidatePath(`/events/${eventId}`);
-    revalidatePath("/lobby");
+    revalidatePath("/");
     return { ok: true };
   } catch (error) {
     return { error: toErrorMessage(error) };

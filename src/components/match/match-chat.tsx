@@ -11,6 +11,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { ActionForm } from "@/components/forms/action-form";
 import { confirmMatchCompletedAction } from "@/app/actions/match";
+import {
+  isAbusiveChatMessage,
+  isMutedChatMessage,
+  MUTED_CHAT_BODY,
+  RESPECT_WARNING,
+} from "@/lib/chat-moderation";
 
 type Message = {
   _id: string;
@@ -18,6 +24,7 @@ type Message = {
   senderName?: string;
   body: string;
   createdAt: string;
+  senderOnly?: boolean;
 };
 type Evidence = {
   _id: string;
@@ -49,6 +56,7 @@ export function MatchChat({
   const [uploading, setUploading] = useState(false);
   const [analyzingScreenshot, setAnalyzingScreenshot] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [respectWarning, setRespectWarning] = useState(false);
   const [failedUploadAttempts, setFailedUploadAttempts] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -64,17 +72,22 @@ export function MatchChat({
         cache: "no-store",
       });
       const data = (await response.json()) as {
-      messages?: Message[];
-      expiresAt?: string;
-      closed?: boolean;
-      matchStatus?: string;
-      result?: "win" | "loss" | "hold";
-      evidence?: Evidence[];
-      failedUploadAttempts?: number;
-      error?: string;
-    };
+        messages?: Message[];
+        expiresAt?: string;
+        closed?: boolean;
+        matchStatus?: string;
+        result?: "win" | "loss" | "hold";
+        evidence?: Evidence[];
+        failedUploadAttempts?: number;
+        error?: string;
+      };
       if (!response.ok) return setStatus(data.error ?? "Unable to load chat.");
-      setMessages(data.messages ?? []);
+      setMessages(
+        (data.messages ?? []).filter((message) => {
+          if (message.senderId === currentUserId) return true;
+          return !isMutedChatMessage(message.body);
+        }),
+      );
       setExpiresAt(data.expiresAt);
       setClosed(Boolean(data.closed));
       setMatchStatus(data.matchStatus ?? "");
@@ -89,7 +102,7 @@ export function MatchChat({
     } finally {
       loadingRef.current = false;
     }
-  }, [matchId]);
+  }, [matchId, currentUserId]);
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);
@@ -122,6 +135,9 @@ export function MatchChat({
   async function send(event: React.FormEvent) {
     event.preventDefault();
     if (!body.trim() || closed || sendingRef.current) return;
+
+    const abusive = isAbusiveChatMessage(body);
+    if (abusive) setRespectWarning(true);
 
     // The ref locks immediately, before React has a chance to render the
     // disabled state after a rapid second click.
@@ -241,7 +257,7 @@ export function MatchChat({
   return (
     <div className="grid min-w-0 gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
-        <span className="text-[var(--muted)]">Private to both captains</span>
+        <span className="text-[var(--muted)]">Share Room ID, Password</span>
         <span
           className={
             expired
@@ -263,24 +279,43 @@ export function MatchChat({
         ) : null}
         {messages.map((message) => {
           const mine = message.senderId === currentUserId;
+          const muted = isMutedChatMessage(message.body);
           return (
             <div
               key={message._id}
               className={`flex w-full ${mine ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[88%] rounded-2xl px-3 py-2 shadow-sm sm:max-w-[75%] ${mine ? "rounded-br-md bg-[var(--accent)] text-black" : "rounded-bl-md bg-white/10 text-white"}`}
+                className={`max-w-[88%] rounded-2xl px-3 py-2 shadow-sm sm:max-w-[75%] ${
+                  muted
+                    ? "rounded-md border border-[var(--danger)]/35 bg-[var(--danger)]/10 text-[var(--danger)]"
+                    : mine
+                      ? "rounded-br-md bg-[var(--accent)] text-black"
+                      : "rounded-bl-md bg-white/10 text-white"
+                }`}
               >
                 <p
-                  className={`mb-1 text-xs font-semibold ${mine ? "text-black/70" : "text-[var(--accent-2)]"}`}
+                  className={`mb-1 text-xs font-semibold ${
+                    muted
+                      ? "text-[var(--danger)]/80"
+                      : mine
+                        ? "text-black/70"
+                        : "text-[var(--accent-2)]"
+                  }`}
                 >
                   {message.senderName ?? (mine ? "You" : "Opponent")}
                 </p>
                 <p className="whitespace-pre-wrap break-words text-sm leading-5">
-                  {message.body}
+                  {muted ? MUTED_CHAT_BODY : message.body}
                 </p>
                 <p
-                  className={`mt-1 text-right text-[10px] ${mine ? "text-black/60" : "text-[var(--muted)]"}`}
+                  className={`mt-1 text-right text-[10px] ${
+                    muted
+                      ? "text-[var(--danger)]/70"
+                      : mine
+                        ? "text-black/60"
+                        : "text-[var(--muted)]"
+                  }`}
                 >
                   {new Date(message.createdAt).toLocaleTimeString([], {
                     hour: "numeric",
@@ -302,8 +337,8 @@ export function MatchChat({
                 </p>
                 {matchStatus !== "settled" ? (
                   <p className="relative mt-2 text-center text-xs text-[var(--muted)]">
-                    Waiting for the other player to upload their result
-                    screenshot.
+                    Waiting for the other player&apos;s screenshot for final NV
+                    Token allocation.
                   </p>
                 ) : null}
               </div>
@@ -432,7 +467,8 @@ export function MatchChat({
                 ) : null}
               </div>
               <p className="px-1 text-xs text-[var(--muted)]">
-                You have {remainingUploadAttempts} of 3 screenshot attempts remaining.
+                You have {remainingUploadAttempts} of 3 screenshot attempts
+                remaining.
               </p>
             </>
           ) : null}
@@ -443,7 +479,8 @@ export function MatchChat({
           ) : null}
           {matchStatus === "disputed" ? (
             <p className="px-1 text-sm font-medium text-[var(--danger)]">
-              Screenshot verification needs admin review. Your final upload has been saved.
+              Screenshot verification needs admin review. Your final upload has
+              been saved.
             </p>
           ) : null}
         </div>
@@ -500,6 +537,40 @@ export function MatchChat({
           )}
         </>
       )}
+      {respectWarning ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="chat-respect-warning-title"
+          onClick={() => setRespectWarning(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-[var(--danger)]/40 bg-[#121821] p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p
+              id="chat-respect-warning-title"
+              className="text-base font-semibold text-[var(--danger)]"
+            >
+              Message muted
+            </p>
+            <p className="mt-2 text-sm leading-6 text-white/80">
+              {RESPECT_WARNING}
+            </p>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Your opponent will not see this message.
+            </p>
+            <Button
+              type="button"
+              className="mt-4 w-full"
+              onClick={() => setRespectWarning(false)}
+            >
+              OK
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {previewOpen && previewUrl ? (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-black/90 p-4"

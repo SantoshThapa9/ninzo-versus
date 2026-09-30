@@ -11,7 +11,7 @@ import { resolveTicketAction } from "@/app/actions/support";
 
 export default async function AdminSupportPage() {
   const session = await auth();
-  if (session?.user?.role !== UserRole.ADMIN) redirect("/lobby");
+  if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   await connectDb();
   const tickets = await supportRepository.listAdmin();
 

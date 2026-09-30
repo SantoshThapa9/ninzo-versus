@@ -10,7 +10,7 @@ type Stop = "profile" | "clash" | "inventory" | "rank";
 
 const routeFor: Record<Stop, string> = {
   profile: "/profile",
-  clash: "/lobby",
+  clash: "/",
   inventory: "/inventory",
   rank: "/rank",
 };
@@ -25,12 +25,7 @@ export function AppTour() {
     if (localStorage.getItem(COMPLETED_KEY)) return;
 
     const nextStop = nextStopRef.current;
-    if (!nextStop && pathname === "/") {
-      nextStopRef.current = "clash";
-      router.replace("/lobby");
-      return;
-    }
-    if (!nextStop && pathname !== "/lobby") {
+    if (!nextStop && pathname !== "/") {
       router.replace("/");
       return;
     }
@@ -72,7 +67,7 @@ export function AppTour() {
           popover: {
             title: "Save your game details",
             description:
-              "Save your In Game Name and Free Fire UID after signing in. You can update them once every 24 hours.",
+              "Save your display name, In Game Name, and Free Fire UID after signing in. You can update each once every 24 hours.",
             doneBtnText: "Sign in to save",
             onDoneClick: () => {
               finish();
