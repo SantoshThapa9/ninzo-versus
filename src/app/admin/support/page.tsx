@@ -6,7 +6,7 @@ import { connectDb } from "@/lib/db/mongoose";
 import { supportRepository } from "@/repositories/ops.repository";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/forms/pending-submit-button";
 import { resolveTicketAction } from "@/app/actions/support";
 
 export default async function AdminSupportPage() {
@@ -29,9 +29,9 @@ export default async function AdminSupportPage() {
           <p className="text-xs text-[var(--muted)]">{ticket.category}</p>
           <form action={resolveTicketAction} className="mt-2">
             <input type="hidden" name="ticketId" value={String(ticket._id)} />
-            <Button type="submit" size="sm" variant="secondary">
+            <PendingSubmitButton type="submit" size="sm" variant="secondary" pendingLabel="Resolving...">
               Resolve
-            </Button>
+            </PendingSubmitButton>
           </form>
         </Card>
       ))}

@@ -9,7 +9,7 @@ import { matchRepository } from "@/repositories/match.repository";
 import { resultRepository } from "@/repositories/ops.repository";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/forms/pending-submit-button";
 import { resolveTicketAction } from "@/app/actions/support";
 import { SupportTicketChat } from "@/components/support/support-ticket-chat";
 
@@ -110,7 +110,7 @@ export default async function AdminSupportTicketPage({ params }: PageProps<"/adm
         ) : (
           <form action={resolveTicketAction}>
               <input type="hidden" name="ticketId" value={id} />
-              <Button type="submit" variant="secondary" size="full">Close chat and mark solved</Button>
+              <PendingSubmitButton type="submit" variant="secondary" size="full" pendingLabel="Closing chat...">Close chat and mark solved</PendingSubmitButton>
           </form>
         )}
       </Card>

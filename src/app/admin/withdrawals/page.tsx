@@ -4,7 +4,7 @@ import { UserRole } from "@/types/enums";
 import { listWithdrawals } from "@/services/withdrawal.service";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/forms/pending-submit-button";
 import { Input } from "@/components/ui/input";
 import { reviewWithdrawalAction } from "@/app/actions/wallet";
 
@@ -29,15 +29,15 @@ export default async function AdminWithdrawalsPage() {
             <Input name="note" placeholder="Admin note" />
             <Input name="utr" placeholder="UTR (private)" />
             <div className="flex gap-2">
-              <Button name="action" value="approve" size="sm">
+              <PendingSubmitButton name="action" value="approve" size="sm" pendingLabel="Processing...">
                 Approve
-              </Button>
-              <Button name="action" value="paid" size="sm" variant="secondary">
+              </PendingSubmitButton>
+              <PendingSubmitButton name="action" value="paid" size="sm" variant="secondary" pendingLabel="Processing...">
                 Mark paid
-              </Button>
-              <Button name="action" value="reject" size="sm" variant="danger">
+              </PendingSubmitButton>
+              <PendingSubmitButton name="action" value="reject" size="sm" variant="danger" pendingLabel="Processing...">
                 Reject & refund
-              </Button>
+              </PendingSubmitButton>
             </div>
           </form>
         </Card>

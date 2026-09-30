@@ -193,7 +193,7 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
       );
     }
     if (match.opponentCaptainId && String(match.opponentCaptainId) === userId) {
-      return match;
+      return { match, acceptedNow: false };
     }
     if (input.stake < match.stakeMin || input.stake > match.stakeMax) {
       throw new AppError(
@@ -271,7 +271,7 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
 
     match.lockedStake = input.stake;
     await match.save({ session });
-    return match;
+    return { match, acceptedNow: true };
   });
 }
 

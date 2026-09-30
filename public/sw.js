@@ -7,6 +7,30 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+self.addEventListener("push", (event) => {
+  const payload = event.data ? event.data.json() : {};
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "Ninzo Versus", {
+      body: payload.body || "You have a new update.",
+      icon: "/nv.jpg",
+      badge: "/nv.ico",
+      tag: payload.tag,
+      data: { url: payload.url || "/" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || "/", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => client.url === url);
+      return existing ? existing.focus() : self.clients.openWindow(url);
+    }),
+  );
+});
+
 // Network-first avoids serving stale authenticated or match data while satisfying
 // the fetch-event requirement for PWA-capable browsers.
 self.addEventListener("fetch", (event) => {

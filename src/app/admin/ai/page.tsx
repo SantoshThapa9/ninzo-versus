@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/forms/pending-submit-button";
 import { saveSettingsAction } from "@/app/actions/wallet";
 
 export default async function AdminAiPage() {
@@ -72,7 +72,7 @@ export default async function AdminAiPage() {
           <Label htmlFor="clashWarning">Clash warning</Label>
           <Textarea id="clashWarning" name="clashWarning" defaultValue={settings.clashWarning} />
         </div>
-        <Button type="submit">Save configuration</Button>
+        <PendingSubmitButton type="submit" pendingLabel="Saving configuration...">Save configuration</PendingSubmitButton>
       </form>
     </Card>
   );

@@ -18,6 +18,7 @@ type EventValues = {
   format?: string;
   maxSlots?: number;
   entryFeeCoins?: number;
+  winningPrizeCoins?: number;
   prizeDistribution?: {
     platformProfit: number;
     first: number;
@@ -39,7 +40,9 @@ function toDateInput(value?: string) {
 export function EventBuilderForm({ event }: { event?: EventValues }) {
   const [maxSlots, setMaxSlots] = useState(event?.maxSlots ?? 48);
   const [entryFeeCoins, setEntryFeeCoins] = useState(event?.entryFeeCoins ?? 10);
-  const totalPool = roundTokens(Math.max(0, maxSlots) * Math.max(0, entryFeeCoins));
+  const [freeEntry, setFreeEntry] = useState(event?.entryFeeCoins === 0);
+  const [winningPrizeCoins, setWinningPrizeCoins] = useState(event?.winningPrizeCoins ?? 0);
+  const totalPool = freeEntry ? Math.max(0, winningPrizeCoins) : roundTokens(Math.max(0, maxSlots) * Math.max(0, entryFeeCoins));
   const rewards = {
     first: roundTokens((totalPool * DEFAULT_PRIZE_SPLIT.firstPercent) / 100),
     second: roundTokens((totalPool * DEFAULT_PRIZE_SPLIT.secondPercent) / 100),
@@ -77,14 +80,24 @@ export function EventBuilderForm({ event }: { event?: EventValues }) {
       </div>
       <div>
         <Label htmlFor="entryFeeCoins">Match registration (NV Tokens)</Label>
-        <Input id="entryFeeCoins" name="entryFeeCoins" type="number" min={0} step="0.01" value={entryFeeCoins} onChange={(e) => setEntryFeeCoins(Number(e.target.value))} required />
+        <Input id="entryFeeCoins" name="entryFeeCoins" type="number" min={0} step="0.01" value={freeEntry ? 0 : entryFeeCoins} onChange={(e) => setEntryFeeCoins(Number(e.target.value))} disabled={freeEntry} required />
       </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="freeEntry" checked={freeEntry} onChange={(e) => setFreeEntry(e.target.checked)} />
+        Free Entry
+      </label>
+      {freeEntry ? (
+        <div>
+          <Label htmlFor="winningPrizeCoins">Free-entry prize pool (NV Tokens)</Label>
+          <Input id="winningPrizeCoins" name="winningPrizeCoins" type="number" min={0.01} step="0.01" value={winningPrizeCoins} onChange={(e) => setWinningPrizeCoins(Number(e.target.value))} required />
+        </div>
+      ) : <input type="hidden" name="winningPrizeCoins" value="0" />}
       <input type="hidden" name="platformProfit" value={DEFAULT_PRIZE_SPLIT.platformProfitPercent} />
       <input type="hidden" name="first" value={DEFAULT_PRIZE_SPLIT.firstPercent} />
       <input type="hidden" name="second" value={DEFAULT_PRIZE_SPLIT.secondPercent} />
       <input type="hidden" name="third" value={DEFAULT_PRIZE_SPLIT.thirdPercent} />
       <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm">
-        <p className="font-medium">Projected prize pool at {maxSlots || 0} registrations: {totalPool} NV Tokens</p>
+        <p className="font-medium">{freeEntry ? `Free-entry prize pool: ${totalPool} NV Tokens` : `Projected prize pool at ${maxSlots || 0} registrations: ${totalPool} NV Tokens`}</p>
         <p className="mt-1 text-[var(--muted)]">1st: {rewards.first} (50%) • 2nd: {rewards.second} (30%) • 3rd: {rewards.third} (10%) • Platform: {rewards.platform} (10%)</p>
       </div>
       <label className="flex items-center gap-2 text-sm">

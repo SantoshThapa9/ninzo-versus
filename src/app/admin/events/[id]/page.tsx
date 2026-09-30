@@ -4,11 +4,11 @@ import { UserRole, EventStatus } from "@/types/enums";
 import { getEventDetail } from "@/services/event.service";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/forms/pending-submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EventBuilderForm } from "@/components/admin/event-builder-form";
-import { eventRoomAction, eventStatusAction, payPrizesAction } from "@/app/actions/event";
+import { eventRoomAction, eventStatusAction, payPrizesAction, updateEventNoteAction } from "@/app/actions/event";
 
 const workflowStatuses = [EventStatus.PUBLISHED, EventStatus.LIVE, EventStatus.CANCELLED];
 
@@ -25,6 +25,15 @@ export default async function AdminEventDetailPage({ params }: PageProps<"/admin
         <Badge>{event.status}</Badge>
       </div>
       <Card>
+        <h2 className="mb-3 font-bold">Player custom note</h2>
+        <form action={updateEventNoteAction} className="grid gap-2">
+          <input type="hidden" name="eventId" value={id} />
+          <Label htmlFor="eventCustomNotes">Note shown to players</Label>
+          <textarea id="eventCustomNotes" name="customNotes" defaultValue={event.customNotes ?? ""} className="min-h-24 rounded-xl border border-white/10 bg-black/30 p-3" />
+          <PendingSubmitButton type="submit" size="sm" pendingLabel="Saving note...">Save player note</PendingSubmitButton>
+        </form>
+      </Card>
+      <Card>
         <h2 className="mb-3 font-bold">Workflow</h2>
         <form action={eventStatusAction} className="flex gap-2">
           <input type="hidden" name="eventId" value={id} />
@@ -35,7 +44,7 @@ export default async function AdminEventDetailPage({ params }: PageProps<"/admin
               </option>
             ))}
           </select>
-          <Button type="submit">Set status</Button>
+          <PendingSubmitButton type="submit" pendingLabel="Updating...">Set status</PendingSubmitButton>
         </form>
       </Card>
       <Card>
@@ -47,9 +56,9 @@ export default async function AdminEventDetailPage({ params }: PageProps<"/admin
           <Input id="roomId" name="roomId" defaultValue={event.roomId ?? ""} />
           <Label htmlFor="roomPassword">Password</Label>
           <Input id="roomPassword" name="roomPassword" defaultValue={event.roomPassword ?? ""} />
-          <Button type="submit" size="sm">
+          <PendingSubmitButton type="submit" size="sm" pendingLabel="Saving room...">
             Save room
-          </Button>
+          </PendingSubmitButton>
         </form>
       </Card>
       <Card>
@@ -77,7 +86,7 @@ export default async function AdminEventDetailPage({ params }: PageProps<"/admin
               </select>
             </div>
           ))}
-          <Button type="submit">Pay prizes & complete</Button>
+          <PendingSubmitButton type="submit" pendingLabel="Paying prizes...">Pay prizes & complete</PendingSubmitButton>
         </form>
       </Card>
       <Card>
@@ -91,6 +100,7 @@ export default async function AdminEventDetailPage({ params }: PageProps<"/admin
             format: event.format,
             maxSlots: event.maxSlots,
             entryFeeCoins: event.entryFeeCoins,
+            winningPrizeCoins: event.winningPrizeCoins,
             prizeDistribution: event.prizeDistribution,
             characterSkill: event.characterSkill,
             unlimitedGlooWall: event.unlimitedGlooWall,

@@ -13,6 +13,8 @@ import {
   setMatchLive,
   undoMatchCompleted,
 } from "@/services/match.service";
+import { notifyChallengeAccepted } from "@/services/push-notification.service";
+import { getCurrentUserIdentity } from "@/services/player-profile.service";
 import { EvidenceKind } from "@/types/enums";
 
 export async function createMatchAction(_prev: { error?: string } | null, formData: FormData) {
@@ -42,11 +44,16 @@ export async function acceptMatchAction(_prev: { error?: string } | null, formDa
   try {
     const session = await requireSession();
     await rateLimit(`match:accept:${session.user.id}`, 8, 60);
-    await acceptClashMatch(session.user.id, {
+    const { match, acceptedNow } = await acceptClashMatch(session.user.id, {
       matchId: String(formData.get("matchId") ?? ""),
       stake: Number(formData.get("stake")),
       warningAcknowledged: formData.get("warning") === "on",
     });
+    if (acceptedNow) {
+      const opponentIgn = (await getCurrentUserIdentity(session.user.id)).ign || "An opponent";
+      // A notification failure must never reverse a successfully accepted match.
+      await notifyChallengeAccepted(String(match.creatorId), opponentIgn, String(match._id));
+    }
     revalidatePath("/");
     revalidatePath("/challenges");
     redirect(`/clash/${String(formData.get("matchId") ?? "")}`);

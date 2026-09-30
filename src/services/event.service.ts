@@ -9,7 +9,7 @@ import { auditRepository } from "@/repositories/ops.repository";
 import { getCurrentUserIdentity } from "@/services/player-profile.service";
 import { CoinTxnType, EventFormat, EventStatus } from "@/types/enums";
 
-const eventSchema = z.object({
+const eventFieldsSchema = z.object({
   name: z.string().min(3),
   eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a valid event date."),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "Choose a valid start time."),
@@ -19,6 +19,10 @@ const eventSchema = z.object({
     (amount) => amount === 0 || isValidTokenAmount(amount),
     { message: "NV Tokens can have up to two decimal places." },
   ),
+  winningPrizeCoins: z.number().min(0).refine(
+    (amount) => isValidTokenAmount(amount),
+    { message: "NV Tokens can have up to two decimal places." },
+  ).optional(),
   prizeDistribution: z.object({
     platformProfit: z.number().min(0),
     first: z.number().min(0),
@@ -29,19 +33,65 @@ const eventSchema = z.object({
   unlimitedGlooWall: z.boolean(),
   roomRules: z.string().optional(),
   customNotes: z.string().optional(),
-}).refine(
-  (value) =>
+});
+
+const eventSchema = eventFieldsSchema.superRefine((value, ctx) => {
+  if (value.entryFeeCoins === 0 && (!value.winningPrizeCoins || value.winningPrizeCoins <= 0)) {
+    ctx.addIssue({ code: "custom", path: ["winningPrizeCoins"], message: "Set a winning prize amount for a free-entry event." });
+  }
+  if (value.prizeDistribution &&
     value.prizeDistribution.platformProfit === DEFAULT_PRIZE_SPLIT.platformProfitPercent &&
     value.prizeDistribution.first === DEFAULT_PRIZE_SPLIT.firstPercent &&
     value.prizeDistribution.second === DEFAULT_PRIZE_SPLIT.secondPercent &&
-    value.prizeDistribution.third === DEFAULT_PRIZE_SPLIT.thirdPercent,
-  "The event reward split is fixed at 50% / 30% / 10% with 10% for the platform.",
-);
+    value.prizeDistribution.third === DEFAULT_PRIZE_SPLIT.thirdPercent
+  ) return;
+  if (value.prizeDistribution) {
+    ctx.addIssue({ code: "custom", message: "The event reward split is fixed at 50% / 30% / 10% with 10% for the platform." });
+  }
+});
+
+const eventUpdateSchema = eventFieldsSchema.partial().superRefine((value, ctx) => {
+  if (value.entryFeeCoins === 0 && (!value.winningPrizeCoins || value.winningPrizeCoins <= 0)) {
+    ctx.addIssue({ code: "custom", path: ["winningPrizeCoins"], message: "Set a winning prize amount for a free-entry event." });
+  }
+  if (value.prizeDistribution &&
+    (value.prizeDistribution.platformProfit !== DEFAULT_PRIZE_SPLIT.platformProfitPercent ||
+      value.prizeDistribution.first !== DEFAULT_PRIZE_SPLIT.firstPercent ||
+      value.prizeDistribution.second !== DEFAULT_PRIZE_SPLIT.secondPercent ||
+      value.prizeDistribution.third !== DEFAULT_PRIZE_SPLIT.thirdPercent)
+  ) {
+    ctx.addIssue({ code: "custom", message: "The event reward split is fixed at 50% / 30% / 10% with 10% for the platform." });
+  }
+});
 
 function eventStartAt(eventDate: string, startTime: string) {
   const value = new Date(`${eventDate}T${startTime}:00+05:30`);
   if (Number.isNaN(value.getTime())) throw new AppError("Choose a valid event start.", "INVALID_EVENT_START");
   return value;
+}
+
+function dateString(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+async function rollEventForwardIfPast(event: { eventDate: Date; startTime: string; registrationClosesAt: Date; save: () => Promise<unknown>; status: string }) {
+  if (event.status !== EventStatus.PUBLISHED && event.status !== EventStatus.REGISTRATION_OPEN) return;
+  let eventDate = dateString(event.eventDate);
+  let start = eventStartAt(eventDate, event.startTime);
+  const now = new Date();
+  let changed = false;
+  while (start <= now) {
+    const nextDay = new Date(`${eventDate}T00:00:00.000Z`);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    eventDate = dateString(nextDay);
+    start = eventStartAt(eventDate, event.startTime);
+    changed = true;
+  }
+  if (changed) {
+    event.eventDate = new Date(`${eventDate}T00:00:00.000Z`);
+    event.registrationClosesAt = start;
+    await event.save();
+  }
 }
 
 const registerSchema = z.object({
@@ -69,7 +119,7 @@ export async function createEvent(adminId: string, raw: unknown) {
 }
 
 export async function updateEvent(adminId: string, eventId: string, raw: unknown) {
-  const input = eventSchema.partial().parse(raw);
+  const input = eventUpdateSchema.parse(raw);
   await connectDb();
   const event = await eventRepository.findById(eventId);
   if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
@@ -197,7 +247,9 @@ export async function payEventPrizes(
   const event = await eventRepository.findById(eventId);
   if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
   const teams = await eventRepository.listTeams(eventId);
-  const prizePool = roundTokens(teams.length * event.entryFeeCoins);
+  const prizePool = event.entryFeeCoins === 0
+    ? roundTokens(event.winningPrizeCoins ?? 0)
+    : roundTokens(teams.length * event.entryFeeCoins);
   const prizeFor = {
     1: roundTokens((prizePool * event.prizeDistribution.first) / 100),
     2: roundTokens((prizePool * event.prizeDistribution.second) / 100),
@@ -281,6 +333,7 @@ export async function getEventDetail(eventId: string, isAdmin: boolean) {
   if (!isAdmin && event.status === EventStatus.DRAFT) {
     throw new AppError("Event not found.", "NOT_FOUND", 404);
   }
+  if (!isAdmin) await rollEventForwardIfPast(event);
   const teams = isAdmin ? await eventRepository.listTeams(eventId) : [];
   return { event: JSON.parse(JSON.stringify(event)), teams };
 }

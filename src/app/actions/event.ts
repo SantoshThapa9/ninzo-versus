@@ -15,7 +15,10 @@ import {
   updateEvent,
 } from "@/services/event.service";
 
-export async function saveEventAction(_prev: { error?: string } | null, formData: FormData) {
+export async function saveEventAction(
+  _prev: { error?: string } | null,
+  formData: FormData,
+) {
   try {
     const session = await requireAdmin();
     const payload = {
@@ -24,7 +27,11 @@ export async function saveEventAction(_prev: { error?: string } | null, formData
       startTime: String(formData.get("startTime") ?? ""),
       format: String(formData.get("format") ?? "solo"),
       maxSlots: Number(formData.get("maxSlots")),
-      entryFeeCoins: Number(formData.get("entryFeeCoins")),
+      entryFeeCoins:
+        formData.get("freeEntry") === "on"
+          ? 0
+          : Number(formData.get("entryFeeCoins")),
+      winningPrizeCoins: Number(formData.get("winningPrizeCoins") ?? 0),
       prizeDistribution: {
         platformProfit: DEFAULT_PRIZE_SPLIT.platformProfitPercent,
         first: DEFAULT_PRIZE_SPLIT.firstPercent,
@@ -39,14 +46,30 @@ export async function saveEventAction(_prev: { error?: string } | null, formData
     const event = eventId
       ? await updateEvent(session.user.id, eventId, payload)
       : await createEvent(session.user.id, payload);
+    const savedEventId = String(event._id);
+
     revalidatePath("/admin/events");
+    revalidatePath(`/admin/events/${savedEventId}`);
     revalidatePath("/matches");
+    revalidatePath(`/events/${savedEventId}`);
     revalidatePath("/");
-    redirect(`/admin/events/${String(event._id)}`);
+    redirect(`/admin/events/${savedEventId}`);
   } catch (error) {
     if (isNextRedirect(error)) throw error;
     return { error: toErrorMessage(error) };
   }
+}
+
+export async function updateEventNoteAction(formData: FormData) {
+  const session = await requireAdmin();
+  const eventId = String(formData.get("eventId") ?? "");
+  await updateEvent(session.user.id, eventId, {
+    customNotes: String(formData.get("customNotes") ?? ""),
+  });
+  revalidatePath(`/admin/events/${eventId}`);
+  revalidatePath(`/events/${eventId}`);
+  revalidatePath("/matches");
+  revalidatePath("/");
 }
 
 export async function eventStatusAction(formData: FormData) {
@@ -77,7 +100,10 @@ export async function eventRoomAction(formData: FormData) {
   revalidatePath(`/events/${eventId}`);
 }
 
-export async function registerEventAction(_prev: { error?: string } | null, formData: FormData) {
+export async function registerEventAction(
+  _prev: { error?: string } | null,
+  formData: FormData,
+) {
   try {
     const session = await requireSession();
     const eventId = String(formData.get("eventId") ?? "");

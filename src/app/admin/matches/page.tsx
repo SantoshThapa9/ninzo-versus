@@ -6,7 +6,7 @@ import { matchRepository } from "@/repositories/match.repository";
 import { resultRepository } from "@/repositories/ops.repository";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/forms/pending-submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { adminLiveMatchAction, adminSettleAction } from "@/app/actions/match";
@@ -138,9 +138,9 @@ export default async function AdminMatchesPage() {
               <Input name="roomId" />
               <Label>Room password</Label>
               <Input name="roomPassword" type="password" />
-              <Button type="submit" size="sm">
+              <PendingSubmitButton type="submit" size="sm" pendingLabel="Setting live...">
                 Set live
-              </Button>
+              </PendingSubmitButton>
             </form>
           ) : null}
           {["awaiting_evidence", "result_review", "disputed"].includes(
@@ -156,9 +156,9 @@ export default async function AdminMatchesPage() {
                 <option value="B">Winner: {playerB}</option>
                 <option value="DRAW">Draw — refund both players</option>
               </select>
-              <Button type="submit" variant="secondary" size="sm">
+              <PendingSubmitButton type="submit" variant="secondary" size="sm" pendingLabel="Settling...">
                 Confirm final decision
-              </Button>
+              </PendingSubmitButton>
             </form>
           ) : null}
         </Card>

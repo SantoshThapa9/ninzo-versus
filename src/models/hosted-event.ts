@@ -22,6 +22,7 @@ const HostedEventSchema = new Schema(
     maxSlots: { type: Number, required: true, min: 1 },
     reservedSlots: { type: Number, default: 0, min: 0 },
     entryFeeCoins: { type: Number, required: true, min: 0 },
+    winningPrizeCoins: { type: Number, default: 0, min: 0 },
     prizeDistribution: { type: PrizeDistributionSchema, required: true },
     characterSkill: { type: Boolean, default: true },
     unlimitedGlooWall: { type: Boolean, default: false },
@@ -41,4 +42,14 @@ export type HostedEventDoc = InferSchemaType<typeof HostedEventSchema> & {
   _id: Types.ObjectId;
 };
 
-export const HostedEventModel = models.HostedEvent || model("HostedEvent", HostedEventSchema);
+// During development, Next.js can retain a previously compiled Mongoose model
+// after a hot reload. Extend that cached schema as well so newly added event
+// fields (such as the free-entry prize pool) are not silently discarded.
+const existingHostedEventModel = models.HostedEvent;
+if (existingHostedEventModel && !existingHostedEventModel.schema.path("winningPrizeCoins")) {
+  existingHostedEventModel.schema.add({
+    winningPrizeCoins: { type: Number, default: 0, min: 0 },
+  });
+}
+
+export const HostedEventModel = existingHostedEventModel || model("HostedEvent", HostedEventSchema);

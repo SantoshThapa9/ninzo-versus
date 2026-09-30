@@ -13,6 +13,7 @@ import { getPlayerRank } from "@/services/rank.service";
 import { getRank } from "@/lib/rank";
 import { Medal } from "lucide-react";
 import Link from "next/link";
+import { NotificationToggle } from "@/components/profile/notification-toggle";
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -133,6 +134,7 @@ export default async function ProfilePage() {
             </Button>
           </>
         )}
+        {userId ? <NotificationToggle /> : null}
       </Card>
       {playerRank
         ? (() => {
