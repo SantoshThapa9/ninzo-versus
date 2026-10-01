@@ -50,6 +50,7 @@ export const CoinTxnType = {
   STAKE_SETTLE: "stake_settle",
   TOURNAMENT_ENTRY: "tournament_entry",
   PRIZE_PAYOUT: "prize_payout",
+  DAILY_FREE_REWARD: "daily_free_reward",
   WITHDRAWAL: "withdrawal",
   WITHDRAWAL_REVERSAL: "withdrawal_reversal",
   PLATFORM_FEE: "platform_fee",

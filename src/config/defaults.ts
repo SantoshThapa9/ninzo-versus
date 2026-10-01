@@ -54,3 +54,5 @@ export const DEFAULT_PRIZE_SPLIT = {
   secondPercent: 30,
   thirdPercent: 10,
 } as const;
+
+export const DAILY_FREE_REWARD_SCHEDULE = [0.05, 0.15, 0.3, 0.55, 0.85, 1.2, 1.9] as const;

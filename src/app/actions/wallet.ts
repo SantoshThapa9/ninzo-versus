@@ -8,6 +8,7 @@ import { createDepositOrder } from "@/services/payment.service";
 import { requestWithdrawal, reviewWithdrawal } from "@/services/withdrawal.service";
 import { updatePlatformSettings } from "@/services/settings.service";
 import { savePlayerIdentity } from "@/services/player-profile.service";
+import { claimDailyFreeReward } from "@/services/wallet.service";
 
 export async function createDepositAction(coins: number) {
   const session = await requireSession();
@@ -30,6 +31,31 @@ export async function withdrawAction(_prev: { error?: string } | null, formData:
   }
 }
 
+export async function claimDailyFreeRewardAction(
+  prev: { error?: string; ok?: boolean; message?: string; rewardDay?: number; amount?: number } | null,
+  formData: FormData,
+) {
+  try {
+    void prev;
+    void formData;
+    const session = await requireSession();
+    const result = await claimDailyFreeReward(session.user.id);
+    revalidatePath("/inventory");
+    revalidatePath("/");
+    return {
+      ok: true,
+      rewardDay: result.rewardDay,
+      amount: result.amount,
+      message: result.claimedNow
+        ? `Day ${result.rewardDay} claimed: ${result.amount} NV added.`
+        : "Today's reward was already claimed.",
+    };
+  } catch (error) {
+    console.error("Daily free NV claim failed", error);
+    return { error: toErrorMessage(error) };
+  }
+}
+
 export async function reviewWithdrawalAction(formData: FormData) {
   const session = await requireAdmin();
   await reviewWithdrawal(
@@ -37,7 +63,6 @@ export async function reviewWithdrawalAction(formData: FormData) {
     String(formData.get("withdrawalId") ?? ""),
     String(formData.get("action") ?? "approve") as "approve" | "reject" | "paid",
     String(formData.get("note") ?? ""),
-    String(formData.get("utr") ?? ""),
   );
   revalidatePath("/admin/withdrawals");
 }

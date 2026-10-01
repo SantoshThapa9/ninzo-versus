@@ -5,10 +5,29 @@ import { WithdrawalModel } from "@/models/withdrawal";
 import type { CoinTxnType } from "@/types/enums";
 
 type Session = mongoose.ClientSession;
+type LedgerCursor = { createdAt: Date; id: string };
 
 export const ledgerRepository = {
   findByIdempotency(key: string, session?: Session) {
     return CoinTransactionModel.findOne({ idempotencyKey: key }).session(session ?? null);
+  },
+  findDailyReward(userId: string, claimDay: string, session?: Session) {
+    return CoinTransactionModel.findOne({
+      userId,
+      type: "daily_free_reward",
+      referenceType: "daily_free_reward",
+      referenceId: claimDay,
+    }).session(session ?? null);
+  },
+  listDailyRewards(userId: string, session?: Session) {
+    return CoinTransactionModel.find({
+      userId,
+      type: "daily_free_reward",
+      referenceType: "daily_free_reward",
+    })
+      .sort({ referenceId: -1 })
+      .limit(2)
+      .session(session ?? null);
   },
   create(
     data: {
@@ -20,6 +39,7 @@ export const ledgerRepository = {
       referenceType: string;
       referenceId: string;
       idempotencyKey: string;
+      accountEmail?: string;
       metadata?: unknown;
     },
     session?: Session,
@@ -28,6 +48,19 @@ export const ledgerRepository = {
   },
   listForUser(userId: string, limit = 40) {
     return CoinTransactionModel.find({ userId }).sort({ createdAt: -1 }).limit(limit).lean();
+  },
+  listForUserPage(userId: string, cursor?: LedgerCursor, limit = 10) {
+    const filter: Record<string, unknown> = { userId };
+    if (cursor) {
+      filter.$or = [
+        { createdAt: { $lt: cursor.createdAt } },
+        { createdAt: cursor.createdAt, _id: { $lt: new mongoose.Types.ObjectId(cursor.id) } },
+      ];
+    }
+    return CoinTransactionModel.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit)
+      .lean();
   },
 };
 

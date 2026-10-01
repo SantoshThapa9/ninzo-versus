@@ -17,16 +17,26 @@ import {
   UsersRound,
 } from "lucide-react";
 import { EventCard } from "@/components/events/EventCard";
+import { DailyFreeReward } from "@/components/wallet/daily-free-reward";
+import { getDailyFreeRewardStatus } from "@/services/wallet.service";
 
 export default async function HomePage() {
   const session = await auth();
   await connectDb();
-  const [matches, events, settings, user] = await Promise.all([
+  const [matches, events, settings, user, dailyReward] = await Promise.all([
     listOpenMatches(),
     listPublicEvents(),
     getPlatformSettings(),
     session?.user?.id ? userRepository.findById(session.user.id) : null,
+    session?.user?.id ? getDailyFreeRewardStatus(session.user.id) : null,
   ]);
+  const nextRewardDay = new Date();
+  nextRewardDay.setUTCDate(nextRewardDay.getUTCDate() + 1);
+  const nextRewardLabel = nextRewardDay.toLocaleDateString("en-IN", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 
   return (
     <div className="grid gap-6 pb-2">
@@ -51,6 +61,15 @@ export default async function HomePage() {
           </div>
         </div>
       </Card>
+      <DailyFreeReward
+        signedIn={Boolean(session?.user?.id)}
+        claimed={dailyReward?.claimed ?? false}
+        rewardDay={dailyReward?.rewardDay ?? 1}
+        streak={dailyReward?.streak ?? 0}
+        reset={dailyReward?.reset ?? false}
+        cycleComplete={dailyReward?.cycleComplete ?? false}
+        nextAvailableLabel={nextRewardLabel}
+      />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-[var(--accent-2)]">

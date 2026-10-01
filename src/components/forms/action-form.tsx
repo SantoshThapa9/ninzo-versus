@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 
-type State = { error?: string; ok?: boolean; id?: string } | null;
+type State = { error?: string; ok?: boolean; id?: string; message?: string } | null;
 
 type Action = (prev: State, formData: FormData) => Promise<State>;
 
@@ -14,7 +14,7 @@ export function ActionForm({
   confirmMessage,
 }: {
   action: Action;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   submitLabel: string;
   confirmMessage?: string;
 }) {
@@ -29,7 +29,7 @@ export function ActionForm({
     >
       {children}
       {state?.error ? <p className="text-sm text-[var(--danger)]">{state.error}</p> : null}
-      {state?.ok ? <p className="text-sm text-[var(--accent-2)]">Saved.</p> : null}
+      {state?.ok ? <p className="text-sm text-[var(--accent-2)]">{state.message ?? "Saved."}</p> : null}
       <Button type="submit" size="full" disabled={pending}>
         {pending ? "Please wait..." : submitLabel}
       </Button>

@@ -20,7 +20,9 @@ const eventFieldsSchema = z.object({
     { message: "NV Tokens can have up to two decimal places." },
   ),
   winningPrizeCoins: z.number().min(0).refine(
-    (amount) => isValidTokenAmount(amount),
+    // Paid-entry events intentionally submit 0: their prize pool is derived
+    // from registrations. Free-entry events are required below to set one.
+    (amount) => amount === 0 || isValidTokenAmount(amount),
     { message: "NV Tokens can have up to two decimal places." },
   ).optional(),
   prizeDistribution: z.object({

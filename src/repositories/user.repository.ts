@@ -11,6 +11,11 @@ export const userRepository = {
   findByEmail(email: string) {
     return UserModel.findOne({ email: email.toLowerCase() });
   },
+  findByIds(ids: string[]) {
+    return UserModel.find({ _id: { $in: ids } })
+      .select("displayName email availableCoins lockedCoins")
+      .lean();
+  },
   findPlatform(session?: Session) {
     return UserModel.findOne({ role: UserRole.PLATFORM }).session(session ?? null);
   },

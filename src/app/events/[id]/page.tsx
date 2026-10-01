@@ -28,11 +28,12 @@ export default async function EventDetailPage({
   const freeEntry = event.entryFeeCoins === 0;
   const configuredFreeEntryPrizePool = Number(event.winningPrizeCoins);
   const prizePool = freeEntry
-    ? Number.isFinite(configuredFreeEntryPrizePool) && configuredFreeEntryPrizePool > 0
+    ? Number.isFinite(configuredFreeEntryPrizePool) &&
+      configuredFreeEntryPrizePool > 0
       ? configuredFreeEntryPrizePool
       : 0
     : event.reservedSlots * event.entryFeeCoins;
-  const prizeFor = (percent: number) => Math.floor((prizePool * percent) / 100);
+  const prizeFor = (percent: number) => (prizePool * percent) / 100;
   const [startHour, startMinute] = event.startTime.split(":").map(Number);
   const startTime = `${startHour % 12 || 12}:${String(startMinute).padStart(2, "0")} ${startHour >= 12 ? "PM" : "AM"}`;
 
@@ -119,9 +120,7 @@ export default async function EventDetailPage({
       <Card className="border-white/10">
         <div className="mb-3 flex items-center gap-2">
           <Crown size={18} className="text-yellow-300" />
-          <h2 className="font-bold">
-            Prize pool
-          </h2>
+          <h2 className="font-bold">Prize pool</h2>
         </div>
         <p className="text-2xl font-black">
           {prizePool}{" "}
@@ -136,8 +135,7 @@ export default async function EventDetailPage({
           <div className="rounded-xl bg-yellow-400/10 p-2.5">
             <p className="text-yellow-300">1st</p>
             <p className="mt-1 font-bold">
-              {prizeFor(event.prizeDistribution.first)}{" "}
-              NV
+              {prizeFor(event.prizeDistribution.first)} NV
             </p>
           </div>
           <div className="rounded-xl bg-white/8 p-2.5">

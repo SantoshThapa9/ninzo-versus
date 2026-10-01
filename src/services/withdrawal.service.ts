@@ -3,13 +3,15 @@ import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { todayUtcStart } from "@/lib/utils";
 import { isValidTokenAmount } from "@/lib/utils";
-import { withdrawalRepository } from "@/repositories/finance.repository";
+import { ledgerRepository, withdrawalRepository } from "@/repositories/finance.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { applyLedger } from "@/services/wallet.service";
 import { getPlatformSettings } from "@/services/settings.service";
 import { auditRepository } from "@/repositories/ops.repository";
 import { CoinTxnType, WithdrawalStatus } from "@/types/enums";
 import { WithdrawalModel } from "@/models/withdrawal";
+import { formatTokenActivity } from "@/lib/token-activity";
+import mongoose from "mongoose";
 
 const requestSchema = z.object({
   coins: z.number().positive().refine(isValidTokenAmount, {
@@ -70,7 +72,6 @@ export async function reviewWithdrawal(
   withdrawalId: string,
   action: "approve" | "reject" | "paid",
   note?: string,
-  utr?: string,
 ) {
   await connectDb();
   const withdrawal = await withdrawalRepository.findById(withdrawalId);
@@ -106,7 +107,7 @@ export async function reviewWithdrawal(
     await withdrawal.save();
   } else {
     withdrawal.status = WithdrawalStatus.PAID;
-    withdrawal.utr = utr;
+    withdrawal.adminNote = note;
     withdrawal.processedAt = new Date();
     withdrawal.processedBy = adminId as unknown as typeof withdrawal.processedBy;
     await withdrawal.save();
@@ -125,4 +126,82 @@ export async function listWithdrawals(userId?: string) {
   await connectDb();
   if (userId) return withdrawalRepository.listForUser(userId);
   return WithdrawalModel.find().sort({ createdAt: -1 }).limit(80).lean();
+}
+
+type TokenFlowCursor = { createdAt: string; id: string };
+
+function parseTokenFlowCursor(cursor?: string): TokenFlowCursor | undefined {
+  if (!cursor) return undefined;
+  try {
+    const value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as TokenFlowCursor;
+    if (!value.createdAt || !mongoose.isObjectIdOrHexString(value.id) || Number.isNaN(new Date(value.createdAt).getTime())) {
+      return undefined;
+    }
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
+function serializeTokenFlow(transactions: Awaited<ReturnType<typeof ledgerRepository.listForUserPage>>) {
+  return transactions.map((transaction) => ({
+    id: String(transaction._id),
+    label: formatTokenActivity(transaction.type),
+    amount: transaction.amount,
+    availableAfter: transaction.availableAfter,
+    createdAt: transaction.createdAt.toISOString(),
+  }));
+}
+
+function nextTokenFlowCursor(transaction: { _id: unknown; createdAt: Date }) {
+  return Buffer.from(JSON.stringify({ id: String(transaction._id), createdAt: transaction.createdAt.toISOString() })).toString("base64url");
+}
+
+export async function getWithdrawalTokenFlow(withdrawalId: string, cursor?: string) {
+  await connectDb();
+  const withdrawal = await withdrawalRepository.findById(withdrawalId);
+  if (!withdrawal) throw new AppError("Reward redemption request not found.", "NOT_FOUND", 404);
+  const parsedCursor = parseTokenFlowCursor(cursor);
+  const transactions = await ledgerRepository.listForUserPage(
+    String(withdrawal.userId),
+    parsedCursor ? { id: parsedCursor.id, createdAt: new Date(parsedCursor.createdAt) } : undefined,
+    10,
+  );
+  return {
+    transactions: serializeTokenFlow(transactions),
+    // The next request confirms whether another page exists without loading
+    // an extra transaction ahead of the admin's explicit request.
+    nextCursor: transactions.length === 10 ? nextTokenFlowCursor(transactions[transactions.length - 1]) : null,
+  };
+}
+
+/** Minimal admin review data derived from the immutable wallet ledger. */
+export async function listWithdrawalReviews() {
+  await connectDb();
+  const withdrawals = await WithdrawalModel.find().sort({ createdAt: -1 }).limit(80).lean();
+  const userIds = [...new Set(withdrawals.map((withdrawal) => String(withdrawal.userId)))];
+  const [users, flows] = await Promise.all([
+    userRepository.findByIds(userIds),
+    Promise.all(userIds.map(async (userId) => [userId, await ledgerRepository.listForUserPage(userId, undefined, 10)] as const)),
+  ]);
+  const usersById = new Map(users.map((user) => [String(user._id), user]));
+  const flowsByUserId = new Map(flows);
+
+  return withdrawals.map((withdrawal) => {
+    const transactions = flowsByUserId.get(String(withdrawal.userId)) ?? [];
+    const flow = transactions;
+    const user = usersById.get(String(withdrawal.userId));
+    return {
+      withdrawal,
+      user: user
+        ? {
+            displayName: user.displayName,
+            email: user.email,
+            availableCoins: user.availableCoins,
+          }
+        : null,
+      flow: serializeTokenFlow(flow),
+      nextCursor: transactions.length === 10 ? nextTokenFlowCursor(flow[flow.length - 1]) : null,
+    };
+  });
 }
