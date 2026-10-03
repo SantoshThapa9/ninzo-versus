@@ -15,34 +15,6 @@ export const eventRepository = {
   findByIdWithRoom(id: string) {
     return HostedEventModel.findById(id).select("+roomId +roomPassword");
   },
-  listExpiredRollable(now: Date, limit = 500) {
-    return HostedEventModel.find({
-      status: { $in: [EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN] },
-      registrationClosesAt: { $lte: now },
-    })
-      .sort({ registrationClosesAt: 1 })
-      .limit(limit)
-      .maxTimeMS(8_000)
-      .lean();
-  },
-  advanceExpiredOccurrence(
-    id: string,
-    expectedRegistrationClosesAt: Date,
-    eventDate: Date,
-    registrationClosesAt: Date,
-    seasonId: mongoose.Types.ObjectId,
-  ) {
-    // The old close time is an optimistic-concurrency token. If another
-    // request already rolled this event, this becomes a harmless no-op.
-    return HostedEventModel.updateOne(
-      {
-        _id: id,
-        status: { $in: [EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN] },
-        registrationClosesAt: expectedRegistrationClosesAt,
-      },
-      { $set: { eventDate, registrationClosesAt, seasonId } },
-    );
-  },
   listPublic() {
     return HostedEventModel.find({
       status: { $in: [EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.LIVE] },

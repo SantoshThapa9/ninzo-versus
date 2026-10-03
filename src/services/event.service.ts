@@ -11,11 +11,7 @@ import { applyLedger } from "@/services/wallet.service";
 import { auditRepository } from "@/repositories/ops.repository";
 import { getCurrentUserIdentity } from "@/services/player-profile.service";
 import { CoinTxnType, EventFormat, EventStatus } from "@/types/enums";
-import {
-  eventDateFromStoredDate,
-  eventOccurrenceInIst,
-  nextFutureEventOccurrence,
-} from "@/lib/event-rollover";
+import { eventOccurrenceInIst } from "@/lib/event-time";
 
 const eventFieldsSchema = z.object({
   name: z.string().min(3),
@@ -79,39 +75,6 @@ function eventStartAt(eventDate: string, startTime: string) {
     return eventOccurrenceInIst(eventDate, startTime).startsAt;
   } catch {
     throw new AppError("Choose a valid event start.", "INVALID_EVENT_START");
-  }
-}
-
-async function rollEventForwardIfPast(event: { _id: unknown; eventDate: Date; startTime: string; registrationClosesAt: Date; status: string }, now = new Date()) {
-  if (event.status !== EventStatus.PUBLISHED && event.status !== EventStatus.REGISTRATION_OPEN) return false;
-  if (event.registrationClosesAt > now) return false;
-  const occurrence = nextFutureEventOccurrence(eventDateFromStoredDate(event.eventDate), event.startTime, now);
-  const season = await getOrCreateSeasonForDate(
-    new Date(`${occurrence.eventDate}T00:00:00.000Z`),
-  );
-  const result = await eventRepository.advanceExpiredOccurrence(
-    String(event._id),
-    event.registrationClosesAt,
-    new Date(`${occurrence.eventDate}T00:00:00.000Z`),
-    occurrence.startsAt,
-    season._id,
-  );
-  return result.modifiedCount === 1;
-}
-
-/** Rolls every expired daily event. Safe for concurrent web requests and cron retries. */
-export async function rollExpiredEvents(now = new Date()) {
-  await connectDb();
-  let rolled = 0;
-  // Continue past a full page: each successful update makes its event future,
-  // and concurrent runners can only turn an update into a no-op.
-  while (true) {
-    const events = await eventRepository.listExpiredRollable(now);
-    if (!events.length) return { rolled };
-    for (const event of events) {
-      if (await rollEventForwardIfPast(event, now)) rolled += 1;
-    }
-    if (events.length < 500) return { rolled };
   }
 }
 
@@ -219,10 +182,6 @@ export async function registerForEvent(userId: string, raw: unknown) {
     const event = await eventRepository.findById(input.eventId, session);
     if (!event || !canRegister(event.status as EventStatus)) {
       throw new AppError("This event is not open for registration.", "EVENT_CLOSED");
-    }
-    const now = new Date();
-    if (now >= event.registrationClosesAt) {
-      throw new AppError("Registration window is closed.", "WINDOW_CLOSED");
     }
     const identity = await getCurrentUserIdentity(userId);
     if (!identity.ign) {
@@ -336,25 +295,7 @@ const getCachedPublicEvents = unstable_cache(
   { revalidate: 15, tags: ["public-events"] },
 );
 
-let lastEventRolloverAt = 0;
-let eventRolloverPromise: Promise<void> | null = null;
-
-async function ensureExpiredEventsRolled() {
-  if (Date.now() - lastEventRolloverAt < 30_000) return;
-  if (!eventRolloverPromise) {
-    eventRolloverPromise = rollExpiredEvents()
-      .then(() => {
-        lastEventRolloverAt = Date.now();
-      })
-      .finally(() => {
-        eventRolloverPromise = null;
-      });
-  }
-  await eventRolloverPromise;
-}
-
 export async function listPublicEvents() {
-  await ensureExpiredEventsRolled();
   return getCachedPublicEvents();
 }
 
@@ -393,20 +334,12 @@ export async function listCompletedEventResults(
 
 export async function getEventDetail(eventId: string, isAdmin: boolean) {
   await connectDb();
-  let event = isAdmin
+  const event = isAdmin
     ? await eventRepository.findByIdWithRoom(eventId)
     : await eventRepository.findById(eventId);
   if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
   if (!isAdmin && event.status === EventStatus.DRAFT) {
     throw new AppError("Event not found.", "NOT_FOUND", 404);
-  }
-  // Admin and public reads both repair a single stale event immediately. The
-  // cron handles persistence even when there are no reads.
-  if (await rollEventForwardIfPast(event)) {
-    event = isAdmin
-      ? await eventRepository.findByIdWithRoom(eventId)
-      : await eventRepository.findById(eventId);
-    if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
   }
   const teams = isAdmin ? await eventRepository.listTeams(eventId) : [];
   return { event: JSON.parse(JSON.stringify(event)), teams };
