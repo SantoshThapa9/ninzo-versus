@@ -63,20 +63,51 @@ function showBrowserMessageNotification(message: IncomingMessage) {
 export function ChatNotificationListener() {
   const pathname = usePathname();
   const router = useRouter();
+  const pathnameRef = useRef(pathname);
+  const polling = useRef(false);
+  const lastPollingErrorAt = useRef(0);
   const seenMessageIds = useRef(new Set<string>());
   const initialized = useRef(false);
   const seenSupportReplyIds = useRef(new Set<string>());
   const supportInitialized = useRef(false);
 
   useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
+
+  useEffect(() => {
     const load = async () => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible" || polling.current) return;
+      polling.current = true;
       try {
-        const response = await fetch("/api/notifications/chat", {
-          cache: "no-store",
-        });
-        if (!response.ok) return;
-        const data = (await response.json()) as { messages?: IncomingMessage[] };
+        const signal = AbortSignal.timeout(5_000);
+        const [response, supportResponse] = await Promise.all([
+          fetch("/api/notifications/chat", {
+            cache: "no-store",
+            signal,
+          }),
+          fetch("/api/notifications/support", {
+            cache: "no-store",
+            signal,
+          }),
+        ]);
+        if (response.status === 401 && supportResponse.status === 401) return;
+        const failedResponse = [response, supportResponse].find(
+          (item) => !item.ok && item.status !== 401,
+        );
+        if (failedResponse) {
+          throw new Error(
+            `Notification polling failed with ${failedResponse.status}.`,
+          );
+        }
+        const [data, supportData] = await Promise.all([
+          response.ok
+            ? (response.json() as Promise<{ messages?: IncomingMessage[] }>)
+            : Promise.resolve({ messages: [] }),
+          supportResponse.ok
+            ? (supportResponse.json() as Promise<{ messages?: SupportReply[] }>)
+            : Promise.resolve({ messages: [] }),
+        ]);
         const messages = data.messages ?? [];
         if (!initialized.current) {
           messages.forEach((message) => seenMessageIds.current.add(message.id));
@@ -86,7 +117,7 @@ export function ChatNotificationListener() {
         for (const message of messages.reverse()) {
           if (seenMessageIds.current.has(message.id)) continue;
           seenMessageIds.current.add(message.id);
-          if (pathname === `/clash/${message.matchId}`) continue;
+          if (pathnameRef.current === `/clash/${message.matchId}`) continue;
           toast(`${message.senderName} sent a message`, {
             description: message.body,
             action: {
@@ -98,13 +129,6 @@ export function ChatNotificationListener() {
           playMessageSound();
         }
 
-        const supportResponse = await fetch("/api/notifications/support", {
-          cache: "no-store",
-        });
-        if (!supportResponse.ok) return;
-        const supportData = (await supportResponse.json()) as {
-          messages?: SupportReply[];
-        };
         const supportReplies = supportData.messages ?? [];
         if (!supportInitialized.current) {
           supportReplies.forEach((reply) =>
@@ -116,7 +140,7 @@ export function ChatNotificationListener() {
         for (const reply of supportReplies.reverse()) {
           if (seenSupportReplyIds.current.has(reply.id)) continue;
           seenSupportReplyIds.current.add(reply.id);
-          if (pathname === `/support/${reply.ticketId}`) continue;
+          if (pathnameRef.current === `/support/${reply.ticketId}`) continue;
           toast("Ninzo Support replied", {
             description: reply.body,
             action: {
@@ -133,15 +157,23 @@ export function ChatNotificationListener() {
           });
           playMessageSound();
         }
-      } catch {
-        // A temporary polling failure should quietly retry on the next interval.
+      } catch (error) {
+        if (Date.now() - lastPollingErrorAt.current >= 60_000) {
+          console.error(
+            "[notifications] Polling failed; it will retry automatically.",
+            error,
+          );
+          lastPollingErrorAt.current = Date.now();
+        }
+      } finally {
+        polling.current = false;
       }
     };
 
     void load();
-    const timer = window.setInterval(() => void load(), 2000);
+    const timer = window.setInterval(() => void load(), 10_000);
     return () => window.clearInterval(timer);
-  }, [pathname, router]);
+  }, [router]);
 
   return null;
 }

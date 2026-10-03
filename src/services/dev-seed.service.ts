@@ -3,7 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { connectDb } from "@/lib/db/mongoose";
 import { DEV_DUMMY_USER_EMAIL_PATTERN } from "@/lib/dev-dummy-users";
+import { getSeasonPlayerStatId } from "@/lib/season-player-stat";
+import { SeasonPlayerStatModel } from "@/models/season-player-stat";
 import { UserModel } from "@/models/user";
+import { getOrCreateSeasonForDate } from "@/services/season.service";
 import { UserRole, UserStatus } from "@/types/enums";
 
 const dummyUserInputSchema = z
@@ -43,6 +46,28 @@ function rankingFields(input: z.output<typeof dummyUserInputSchema>) {
   };
 }
 
+async function setCurrentSeasonStats(
+  userId: string,
+  input: z.output<typeof dummyUserInputSchema>,
+) {
+  const season = await getOrCreateSeasonForDate(new Date());
+  await SeasonPlayerStatModel.updateOne(
+    { _id: getSeasonPlayerStatId(String(season._id), userId) },
+    {
+      $set: {
+        userId,
+        seasonId: season._id,
+        matchesPlayed: input.matchesPlayed,
+        settledMatchesPlayed: input.matchesPlayed,
+        inactivityMatchesPlayed: 0,
+        wins: input.wins,
+      },
+      $unset: { dailyMatchesPlayedIncrementDay: 1 },
+    },
+    { upsert: true },
+  );
+}
+
 function isDuplicateKeyError(error: unknown) {
   return (
     typeof error === "object" &&
@@ -50,6 +75,13 @@ function isDuplicateKeyError(error: unknown) {
     "code" in error &&
     error.code === 11000
   );
+}
+
+async function findUserByIgn(ign: string) {
+  return UserModel.findOne({ ign })
+    .collation({ locale: "en", strength: 2 })
+    .select("_id")
+    .lean();
 }
 
 async function updateDummyUser(
@@ -62,7 +94,9 @@ async function updateDummyUser(
     { returnDocument: "after", runValidators: true, timestamps: false },
   );
   if (!user) {
-    throw new Error("Select an existing seeded dummy user, or choose New dummy user.");
+    throw new Error(
+      "Select an existing seeded dummy user, or choose New dummy user.",
+    );
   }
   return user;
 }
@@ -103,26 +137,15 @@ export async function saveDevDummyUser(
       },
       input,
     );
+    await setCurrentSeasonStats(String(dummyUser._id), input);
     return { created: false, user: toDevDummyUser(dummyUser) };
   }
 
-  const email = getDummyUserEmail(input.ign);
-  const existingUser = await UserModel.findOne({ email });
-  if (existingUser) {
-    if (
-      !DEV_DUMMY_USER_EMAIL_PATTERN.test(existingUser.email) ||
-      existingUser.role !== UserRole.USER ||
-      existingUser.status !== UserStatus.ACTIVE
-    ) {
-      throw new Error("The generated dummy-user identity conflicts with an existing account.");
-    }
-    const updatedUser = await updateDummyUser(
-      { _id: existingUser._id, email: DEV_DUMMY_USER_EMAIL_PATTERN },
-      input,
-    );
-    return { created: false, user: toDevDummyUser(updatedUser) };
+  if (await findUserByIgn(input.ign)) {
+    throw new Error("A user with this in-game name already exists.");
   }
 
+  const email = getDummyUserEmail(input.ign);
   try {
     const dummyUser = await UserModel.create({
       email,
@@ -131,18 +154,16 @@ export async function saveDevDummyUser(
       role: UserRole.USER,
       status: UserStatus.ACTIVE,
     });
+    await setCurrentSeasonStats(String(dummyUser._id), input);
     return { created: true, user: toDevDummyUser(dummyUser) };
   } catch (error) {
     if (!isDuplicateKeyError(error)) throw error;
-    const user = await updateDummyUser(
-      {
-        email,
-        role: UserRole.USER,
-        status: UserStatus.ACTIVE,
-      },
-      input,
+    if (await findUserByIgn(input.ign)) {
+      throw new Error("A user with this in-game name already exists.");
+    }
+    throw new Error(
+      "The generated dummy-user email conflicts with an existing account.",
     );
-    return { created: false, user: toDevDummyUser(user) };
   }
 }
 

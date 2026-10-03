@@ -16,6 +16,7 @@ export async function GET() {
     source: "manual",
   })
     .select("_id")
+    .maxTimeMS(8_000)
     .lean();
   const ticketIds = tickets.map((ticket) => ticket._id);
   if (!ticketIds.length) return Response.json({ messages: [] });
@@ -25,6 +26,7 @@ export async function GET() {
   })
     .sort({ createdAt: -1 })
     .limit(50)
+    .maxTimeMS(8_000)
     .lean();
   return Response.json({
     messages: messages.map((message) => ({

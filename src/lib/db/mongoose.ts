@@ -25,6 +25,8 @@ export async function connectDb() {
       // default when the network or database is unavailable.
       serverSelectionTimeoutMS: 8_000,
       connectTimeoutMS: 8_000,
+      socketTimeoutMS: 15_000,
+      waitQueueTimeoutMS: 8_000,
     });
   }
   try {

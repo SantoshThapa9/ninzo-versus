@@ -27,6 +27,7 @@ export const ledgerRepository = {
     })
       .sort({ referenceId: -1 })
       .limit(2)
+      .maxTimeMS(8_000)
       .session(session ?? null);
   },
   create(

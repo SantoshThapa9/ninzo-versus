@@ -34,10 +34,12 @@ export async function GET() {
   })
     .sort({ createdAt: -1 })
     .limit(50)
+    .maxTimeMS(8_000)
     .lean();
   const senderIds = [...new Set(messages.map((message) => String(message.senderId)))];
   const users = await UserModel.find({ _id: { $in: senderIds } })
     .select("ign")
+    .maxTimeMS(8_000)
     .lean();
   const ignByUserId = new Map(
     users.map((user) => [String(user._id), user.ign || "Opponent"]),

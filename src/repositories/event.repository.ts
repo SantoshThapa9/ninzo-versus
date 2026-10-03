@@ -22,6 +22,7 @@ export const eventRepository = {
     })
       .sort({ registrationClosesAt: 1 })
       .limit(limit)
+      .maxTimeMS(8_000)
       .lean();
   },
   advanceExpiredOccurrence(
@@ -46,7 +47,9 @@ export const eventRepository = {
     return HostedEventModel.find({
       status: { $in: [EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.LIVE] },
     })
+      .select("_id name customNotes status eventDate reservedSlots maxSlots entryFeeCoins format")
       .sort({ eventDate: 1 })
+      .maxTimeMS(8_000)
       .lean();
   },
   listAll(filter: Record<string, unknown> = {}) {

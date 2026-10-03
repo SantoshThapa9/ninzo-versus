@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, requireSession } from "@/lib/auth/guards";
 import { isNextRedirect, toErrorMessage } from "@/lib/errors";
@@ -17,6 +17,10 @@ import {
 import { notifyChallengeAccepted } from "@/services/push-notification.service";
 import { getCurrentUserIdentity } from "@/services/player-profile.service";
 import { EvidenceKind } from "@/types/enums";
+
+function invalidatePublicOpenMatches() {
+  updateTag("public-open-matches");
+}
 
 export async function createMatchAction(
   _prev: { error?: string } | null,
@@ -37,6 +41,7 @@ export async function createMatchAction(
       rules,
       warningAcknowledged: formData.get("warning") === "on",
     });
+    invalidatePublicOpenMatches();
     revalidatePath("/");
     redirect(`/clash/${String(match._id)}`);
   } catch (error) {
@@ -75,6 +80,7 @@ export async function acceptMatchAction(
         String(match._id),
       );
     }
+    invalidatePublicOpenMatches();
     revalidatePath("/");
     revalidatePath("/challenges");
     revalidatePath(`/clash/${String(match._id)}`);
@@ -93,6 +99,7 @@ export async function deleteMatchAction(
     const session = await requireSession();
     const matchId = String(formData.get("matchId") ?? "");
     await deleteOpenClashMatch(session.user.id, matchId);
+    invalidatePublicOpenMatches();
     revalidatePath("/");
     revalidatePath("/challenges");
     revalidatePath(`/clash/${matchId}`);
@@ -159,6 +166,7 @@ export async function adminSettleAction(formData: FormData) {
     String(formData.get("matchId") ?? ""),
     winnerTeam,
   );
+  updateTag("global-rankings");
   revalidatePath("/admin/matches");
   revalidatePath("/matches");
   revalidatePath("/rank");

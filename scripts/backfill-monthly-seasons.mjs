@@ -77,7 +77,7 @@ try {
     return existing._id;
   }
 
-  await getSeasonId(new Date());
+  const currentSeasonId = await getSeasonId(new Date());
 
   async function backfill(collectionName, dateForRecord) {
     const collection = db.collection(collectionName);
@@ -116,6 +116,236 @@ try {
     (match) => match.completedAt ?? match.createdAt,
   );
   await backfill("hostedevents", (event) => event.eventDate);
+
+  await db.collection("matches").aggregate([
+    {
+      $match: {
+        status: "settled",
+        seasonId: { $type: "objectId" },
+        creatorId: { $type: "objectId" },
+        opponentCaptainId: { $type: "objectId" },
+      },
+    },
+    {
+      $project: {
+        seasonId: 1,
+        players: [
+          {
+            userId: "$creatorId",
+            won: { $eq: ["$winnerTeam", "A"] },
+          },
+          {
+            userId: "$opponentCaptainId",
+            won: { $eq: ["$winnerTeam", "B"] },
+          },
+        ],
+      },
+    },
+    { $unwind: "$players" },
+    {
+      $group: {
+        _id: {
+          seasonId: "$seasonId",
+          userId: "$players.userId",
+        },
+        settledMatchesPlayed: { $sum: 1 },
+        wins: { $sum: { $cond: ["$players.won", 1, 0] } },
+      },
+    },
+    {
+      $project: {
+        _id: {
+          $concat: [
+            { $toString: "$_id.seasonId" },
+            ":",
+            { $toString: "$_id.userId" },
+          ],
+        },
+        seasonId: "$_id.seasonId",
+        userId: "$_id.userId",
+        settledMatchesPlayed: 1,
+        matchesPlayed: "$settledMatchesPlayed",
+        inactivityMatchesPlayed: { $literal: 0 },
+        wins: 1,
+      },
+    },
+    {
+      $merge: {
+        into: "seasonplayerstats",
+        on: "_id",
+        whenMatched: [
+          {
+            $set: {
+              seasonId: {
+                $cond: [
+                  { $eq: ["$legacySnapshot", true] },
+                  "$seasonId",
+                  "$$new.seasonId",
+                ],
+              },
+              userId: {
+                $cond: [
+                  { $eq: ["$legacySnapshot", true] },
+                  "$userId",
+                  "$$new.userId",
+                ],
+              },
+              settledMatchesPlayed: {
+                $cond: [
+                  { $eq: ["$legacySnapshot", true] },
+                  "$settledMatchesPlayed",
+                  "$$new.settledMatchesPlayed",
+                ],
+              },
+              matchesPlayed: {
+                $cond: [
+                  { $eq: ["$legacySnapshot", true] },
+                  "$matchesPlayed",
+                  {
+                    $add: [
+                      "$$new.settledMatchesPlayed",
+                      { $ifNull: ["$inactivityMatchesPlayed", 0] },
+                    ],
+                  },
+                ],
+              },
+              inactivityMatchesPlayed: {
+                $cond: [
+                  { $eq: ["$legacySnapshot", true] },
+                  "$inactivityMatchesPlayed",
+                  { $ifNull: ["$inactivityMatchesPlayed", 0] },
+                ],
+              },
+              wins: {
+                $cond: [
+                  { $eq: ["$legacySnapshot", true] },
+                  "$wins",
+                  "$$new.wins",
+                ],
+              },
+            },
+          },
+        ],
+        whenNotMatched: "insert",
+      },
+    },
+  ]).toArray();
+  console.log("Backfilled season player statistics from settled matches.");
+
+  const migrationStates = db.collection("migrationstates");
+  const legacySnapshotId = "monthly-ranking-legacy-snapshot-v1";
+  if (!(await migrationStates.findOne({ _id: legacySnapshotId }))) {
+    const legacyUserCount = await db
+      .collection("users")
+      .countDocuments({ role: { $ne: "platform" } });
+    await db.collection("users").aggregate([
+      { $match: { role: { $ne: "platform" } } },
+      {
+        $project: {
+          _id: {
+            $concat: [
+              { $toString: { $literal: currentSeasonId } },
+              ":",
+              { $toString: "$_id" },
+            ],
+          },
+          userId: "$_id",
+          seasonId: { $literal: currentSeasonId },
+          matchesPlayed: {
+            $convert: {
+              input: "$matchesPlayed",
+              to: "int",
+              onError: 0,
+              onNull: 0,
+            },
+          },
+          settledMatchesPlayed: {
+            $convert: {
+              input: "$matchesPlayed",
+              to: "int",
+              onError: 0,
+              onNull: 0,
+            },
+          },
+          inactivityMatchesPlayed: { $literal: 0 },
+          wins: {
+            $convert: {
+              input: "$wins",
+              to: "int",
+              onError: 0,
+              onNull: 0,
+            },
+          },
+          dailyMatchesPlayedIncrementDay: {
+            $ifNull: ["$dailyMatchesPlayedIncrementDay", null],
+          },
+          legacySnapshot: { $literal: true },
+        },
+      },
+      {
+        $merge: {
+          into: "seasonplayerstats",
+          on: "_id",
+          whenMatched: [
+            {
+              $set: {
+                userId: "$$new.userId",
+                seasonId: "$$new.seasonId",
+                matchesPlayed: {
+                  $cond: [
+                    { $eq: ["$legacySnapshot", true] },
+                    "$matchesPlayed",
+                    "$$new.matchesPlayed",
+                  ],
+                },
+                settledMatchesPlayed: {
+                  $cond: [
+                    { $eq: ["$legacySnapshot", true] },
+                    "$settledMatchesPlayed",
+                    "$$new.settledMatchesPlayed",
+                  ],
+                },
+                inactivityMatchesPlayed: {
+                  $cond: [
+                    { $eq: ["$legacySnapshot", true] },
+                    "$inactivityMatchesPlayed",
+                    "$$new.inactivityMatchesPlayed",
+                  ],
+                },
+                wins: {
+                  $cond: [
+                    { $eq: ["$legacySnapshot", true] },
+                    "$wins",
+                    "$$new.wins",
+                  ],
+                },
+                dailyMatchesPlayedIncrementDay: {
+                  $ifNull: [
+                    "$dailyMatchesPlayedIncrementDay",
+                    "$$new.dailyMatchesPlayedIncrementDay",
+                  ],
+                },
+                legacySnapshot: true,
+              },
+            },
+          ],
+          whenNotMatched: "insert",
+        },
+      },
+    ]).toArray();
+    await migrationStates.insertOne({
+      _id: legacySnapshotId,
+      completedAt: new Date(),
+      seasonId: currentSeasonId,
+    });
+    console.log(
+      `Seeded current-season rankings from legacy counters for ${legacyUserCount} users.`,
+    );
+  } else {
+    console.log(
+      "Legacy counters were already snapshotted; skipping current-season seeding.",
+    );
+  }
 } finally {
   await client.close();
 }

@@ -43,6 +43,7 @@ const indexes = {
   disputes: [[{ status: 1, createdAt: -1 }, {}]],
   hostedevents: [[{ status: 1, eventDate: 1 }, {}], [{ status: 1, registrationClosesAt: 1 }, {}], [{ seasonId: 1, status: 1, eventDate: -1 }, {}]],
   seasons: [[{ slug: 1 }, { unique: true }], [{ startDate: -1 }, {}]],
+  seasonplayerstats: [[{ seasonId: 1, wins: -1, matchesPlayed: -1 }, {}]],
   hostedteams: [[{ eventId: 1, captainId: 1 }, { unique: true }], [{ eventId: 1, slotNumber: 1 }, { unique: true }]],
   verifiedroomids: [[{ roomId: 1 }, { unique: true }]],
   aiconfigurations: [[{ key: 1 }, { unique: true }]],

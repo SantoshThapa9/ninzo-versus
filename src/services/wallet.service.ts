@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { AppError } from "@/lib/errors";
-import { withTransaction } from "@/lib/db/mongoose";
+import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { roundTokens } from "@/lib/utils";
 import { DAILY_FREE_REWARD_SCHEDULE } from "@/config/defaults";
 import { userRepository } from "@/repositories/user.repository";
@@ -117,6 +117,7 @@ export async function applyLedger(input: LedgerInput) {
 }
 
 export async function getDailyFreeRewardStatus(userId: string, date = new Date()) {
+  await connectDb();
   const claimDay = getRewardClaimDay(date);
   const transactions = await ledgerRepository.listDailyRewards(userId);
   return { claimDay, ...getNextDailyReward(transactions, claimDay) };

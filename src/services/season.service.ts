@@ -1,5 +1,7 @@
 import { connectDb } from "@/lib/db/mongoose";
-import { SeasonModel } from "@/models/season";
+import { unstable_cache } from "next/cache";
+import { Types } from "mongoose";
+import { SeasonModel, type SeasonDoc } from "@/models/season";
 
 function getMonthDates(date: Date) {
   const startDate = new Date(
@@ -53,16 +55,73 @@ export async function getOrCreateSeasonForDate(date: Date) {
 
   const result = await SeasonModel.findOne({ slug: season.slug }).lean();
   if (!result) throw new Error(`Unable to create season ${season.slug}.`);
+  if (result.rankingsSnapshottedAt && result.status !== "completed") {
+    await SeasonModel.updateOne(
+      { _id: result._id, rankingsSnapshottedAt: { $exists: true } },
+      { $set: { status: "completed" } },
+    ).exec();
+    result.status = "completed";
+  }
   return result;
 }
 
+type CachedSeason = {
+  _id: string;
+  id: string;
+  slug: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: SeasonDoc["status"];
+  rankingsSnapshottedAt?: string;
+};
+
+const getCachedSeasons = unstable_cache(
+  async (monthKey: string): Promise<CachedSeason[]> => {
+    const [year, month] = monthKey.split("-").map(Number);
+    const current = await getOrCreateSeasonForDate(
+      new Date(Date.UTC(year, month - 1, 1)),
+    );
+    await SeasonModel.updateMany(
+      { status: "active", _id: { $ne: current._id } },
+      { $set: { status: "completed" } },
+    )
+      .maxTimeMS(5_000)
+      .exec();
+    const seasons = await SeasonModel.find()
+      .sort({ startDate: -1 })
+      .maxTimeMS(5_000)
+      .lean();
+    return seasons.map((season) => ({
+      _id: String(season._id),
+      id: season.id,
+      slug: season.slug,
+      name: season.name,
+      startDate: season.startDate.toISOString(),
+      endDate: season.endDate.toISOString(),
+      status: season.status,
+      rankingsSnapshottedAt: season.rankingsSnapshottedAt?.toISOString(),
+    }));
+  },
+  ["monthly-seasons"],
+  { revalidate: 300, tags: ["monthly-seasons"] },
+);
+
 export async function listSeasons() {
-  const current = await getOrCreateSeasonForDate(new Date());
-  await SeasonModel.updateMany(
-    { status: "active", _id: { $ne: current._id } },
-    { $set: { status: "completed" } },
-  );
-  return SeasonModel.find().sort({ startDate: -1 }).lean();
+  const now = new Date();
+  const monthKey = `${now.getUTCFullYear()}-${String(
+    now.getUTCMonth() + 1,
+  ).padStart(2, "0")}`;
+  const seasons = await getCachedSeasons(monthKey);
+  return seasons.map((season) => ({
+    ...season,
+    _id: new Types.ObjectId(season._id),
+    startDate: new Date(season.startDate),
+    endDate: new Date(season.endDate),
+    rankingsSnapshottedAt: season.rankingsSnapshottedAt
+      ? new Date(season.rankingsSnapshottedAt)
+      : undefined,
+  }));
 }
 
 export async function getSeasonBySlug(slug?: string) {

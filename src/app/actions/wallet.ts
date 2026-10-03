@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { requireAdmin, requireSession } from "@/lib/auth/guards";
 import { toErrorMessage } from "@/lib/errors";
 import { rateLimit } from "@/lib/rate-limit";
@@ -86,6 +86,8 @@ export async function saveProfileAction(
       ign: String(formData.get("ign") ?? ""),
       uid: String(formData.get("uid") ?? ""),
     });
+    updateTag("public-open-matches");
+    updateTag("global-rankings");
     const ageResult = await saveAge(session.user.id, formData.get("age"));
     const upiId = String(formData.get("upiId") ?? "").trim();
     const phoneNumber = String(formData.get("phoneNumber") ?? "").trim();
@@ -122,5 +124,6 @@ export async function saveSettingsAction(formData: FormData) {
     chatModel: String(formData.get("chatModel") ?? ""),
     clashWarning: String(formData.get("clashWarning") ?? ""),
   });
+  updateTag("platform-settings");
   revalidatePath("/admin/ai");
 }

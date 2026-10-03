@@ -1,0 +1,10 @@
+import { RouteLoading } from "@/components/shell/route-loading";
+
+export default function Loading() {
+  return (
+    <RouteLoading
+      title="Rank"
+      description="Global standings and event results."
+    />
+  );
+}

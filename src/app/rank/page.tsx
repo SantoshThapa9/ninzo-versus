@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { RankingsList } from "@/components/rank/rankings-list";
 import { RANKS } from "@/lib/rank";
-import { listGlobalRanks } from "@/services/rank.service";
+import { listSeasonRanks } from "@/services/rank.service";
 import { listCompletedEventResults } from "@/services/event.service";
 import { listSeasons } from "@/services/season.service";
 import { CalendarDays, Trophy } from "lucide-react";
@@ -26,7 +26,7 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
   if (!season) throw new Error("No monthly seasons are available.");
   const [rankingPage, eventResults] = await Promise.all([
     tab === "rankings"
-      ? listGlobalRanks(season)
+      ? listSeasonRanks(season)
       : Promise.resolve({ players: [], hasMore: false }),
     tab === "event-results"
       ? listCompletedEventResults(season)
@@ -38,12 +38,14 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
         <div className="flex items-center gap-2 text-[var(--accent)]">
           <Trophy size={18} />
           <p className="text-xs font-bold uppercase tracking-[0.16em]">
-            Global standings
+            {tab === "rankings" ? "Season standings" : "Full Map results"}
           </p>
         </div>
         <h1 className="mt-1 text-2xl font-extrabold">Rank</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Ranks use your recorded 1v1 wins and matches.
+          {tab === "rankings"
+            ? "Monthly standings use current account stats and are saved when the month closes."
+            : "Season results from completed Full Map events."}
         </p>
       </div>
 

@@ -2,6 +2,7 @@ export { UserModel } from "@/models/user";
 export { PlayerProfileModel } from "@/models/player-profile";
 export { MatchModel } from "@/models/match";
 export { MatchParticipantModel } from "@/models/match-participant";
+export { SeasonPlayerStatModel } from "@/models/season-player-stat";
 export { HostedEventModel } from "@/models/hosted-event";
 export { HostedTeamModel } from "@/models/hosted-team";
 export { PaymentModel } from "@/models/payment";

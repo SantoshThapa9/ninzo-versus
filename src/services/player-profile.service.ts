@@ -33,6 +33,35 @@ export async function getCurrentUserIdentity(userId: string) {
   };
 }
 
+export async function getCurrentUserIdentities(userIds: string[]) {
+  const uniqueIds = [...new Set(userIds)];
+  if (uniqueIds.length === 0) return new Map();
+
+  await connectDb();
+  const [users, profiles] = await Promise.all([
+    userRepository.findIdentitiesByIds(uniqueIds),
+    playerProfileRepository.findIdentitiesByUserIds(uniqueIds),
+  ]);
+  const profilesByUserId = new Map(
+    profiles.map((profile) => [String(profile.userId), profile]),
+  );
+  const usersById = new Map(users.map((user) => [String(user._id), user]));
+
+  return new Map(
+    uniqueIds.map((userId) => {
+      const user = usersById.get(userId);
+      const profile = profilesByUserId.get(userId);
+      return [
+        userId,
+        {
+          ign: user?.ign ?? profile?.ign ?? "",
+          uid: user?.uid ?? profile?.uid ?? "",
+        },
+      ];
+    }),
+  );
+}
+
 async function applyDisplayNameIfChanged(
   userId: string,
   displayName: string,

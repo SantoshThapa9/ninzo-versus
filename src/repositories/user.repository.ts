@@ -1,9 +1,13 @@
 import mongoose from "mongoose";
 import { UserModel, type UserDoc } from "@/models/user";
+import { SeasonPlayerStatModel } from "@/models/season-player-stat";
 import { UserRole } from "@/types/enums";
 import { lastMatchPlayedDateExpression } from "@/lib/last-match-played";
+import { getSeasonPlayerStatId } from "@/lib/season-player-stat";
+import { SeasonModel } from "@/models/season";
 
 type Session = mongoose.ClientSession;
+type ObjectId = mongoose.Types.ObjectId;
 
 function incrementNumericString(field: string) {
   const numericValue = {
@@ -53,6 +57,12 @@ export const userRepository = {
       .select("displayName email availableCoins lockedCoins")
       .lean();
   },
+  findIdentitiesByIds(ids: string[]) {
+    return UserModel.find({ _id: { $in: ids } })
+      .select("_id ign uid")
+      .maxTimeMS(5_000)
+      .lean();
+  },
   findPlatform(session?: Session) {
     return UserModel.findOne({ role: UserRole.PLATFORM }).session(session ?? null);
   },
@@ -77,6 +87,7 @@ export const userRepository = {
     participantIds: [string, string],
     winnerId: string | undefined,
     completedAt: Date,
+    seasonId: ObjectId,
     session: Session,
   ) {
     const participants = [...new Set(participantIds)];
@@ -112,6 +123,40 @@ export const userRepository = {
 
     if (result.matchedCount !== participants.length) {
       throw new Error("Match participant no longer exists.");
+    }
+
+    const seasonIsSnapshotted = await SeasonModel.exists({
+      _id: seasonId,
+      rankingsSnapshottedAt: { $exists: true },
+    }).session(session);
+    if (!seasonIsSnapshotted) {
+      const seasonResult = await SeasonPlayerStatModel.bulkWrite(
+        participants.map((userId) => ({
+          updateOne: {
+            filter: { _id: getSeasonPlayerStatId(String(seasonId), userId) },
+            update: {
+              $inc: {
+                matchesPlayed: 1,
+                settledMatchesPlayed: 1,
+                ...(userId === winnerId ? { wins: 1 } : {}),
+              },
+              $setOnInsert: {
+                userId,
+                seasonId,
+              },
+            },
+            upsert: true,
+          },
+        })),
+        { session },
+      );
+
+      if (
+        seasonResult.matchedCount + seasonResult.upsertedCount !==
+        participants.length
+      ) {
+        throw new Error("Could not update all monthly match statistics.");
+      }
     }
   },
   updateGameIdentity(id: string, ign: string, uid: string, session?: Session) {

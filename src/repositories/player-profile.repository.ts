@@ -12,6 +12,12 @@ export const playerProfileRepository = {
   findByUserId(userId: string, session?: Session) {
     return PlayerProfileModel.findOne({ userId }).session(session ?? null);
   },
+  findIdentitiesByUserIds(userIds: string[]) {
+    return PlayerProfileModel.find({ userId: { $in: userIds } })
+      .select("userId ign uid")
+      .maxTimeMS(5_000)
+      .lean();
+  },
   upsert(userId: string, ign: string, uid?: string, session?: Session) {
     return PlayerProfileModel.findOneAndUpdate(
       { userId },

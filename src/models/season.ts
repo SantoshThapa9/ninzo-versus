@@ -8,6 +8,7 @@ const SeasonSchema = new Schema(
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
     status: { type: String, enum: ["active", "completed"], required: true },
+    rankingsSnapshottedAt: { type: Date },
   },
   { timestamps: true },
 );

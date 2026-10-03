@@ -24,7 +24,11 @@ export const matchRepository = {
     return MatchModel.updateOne({ _id: id }, update).exec();
   },
   listOpen() {
-    return MatchModel.find({ status: "open" }).sort({ createdAt: -1 }).lean();
+    return MatchModel.find({ status: "open" })
+      .select("_id creatorId creatorIgn format stakeMin stakeMax rules")
+      .sort({ createdAt: -1 })
+      .maxTimeMS(8_000)
+      .lean();
   },
   listActiveForUser(userId: string) {
     return MatchModel.find({
@@ -32,6 +36,7 @@ export const matchRepository = {
       status: { $in: ["accepted", "live", "awaiting_evidence", "analyzing", "result_review", "disputed"] },
     })
       .sort({ updatedAt: -1 })
+      .maxTimeMS(8_000)
       .lean();
   },
   listPreviousForUser(userId: string) {
@@ -62,5 +67,10 @@ export const matchRepository = {
   },
   listParticipants(matchId: string) {
     return MatchParticipantModel.find({ matchId }).lean();
+  },
+  listParticipantsForMatches(matchIds: string[]) {
+    return MatchParticipantModel.find({ matchId: { $in: matchIds } })
+      .maxTimeMS(8_000)
+      .lean();
   },
 };

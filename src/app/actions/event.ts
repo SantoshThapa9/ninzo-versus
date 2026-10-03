@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, requireSession } from "@/lib/auth/guards";
 import { isNextRedirect, toErrorMessage } from "@/lib/errors";
@@ -14,6 +14,10 @@ import {
   transitionEvent,
   updateEvent,
 } from "@/services/event.service";
+
+function invalidatePublicEvents() {
+  updateTag("public-events");
+}
 
 export async function saveEventAction(
   _prev: { error?: string } | null,
@@ -48,6 +52,7 @@ export async function saveEventAction(
       : await createEvent(session.user.id, payload);
     const savedEventId = String(event._id);
 
+    invalidatePublicEvents();
     revalidatePath("/admin/events");
     revalidatePath(`/admin/events/${savedEventId}`);
     revalidatePath("/matches");
@@ -66,6 +71,7 @@ export async function updateEventNoteAction(formData: FormData) {
   await updateEvent(session.user.id, eventId, {
     customNotes: String(formData.get("customNotes") ?? ""),
   });
+  invalidatePublicEvents();
   revalidatePath(`/admin/events/${eventId}`);
   revalidatePath(`/events/${eventId}`);
   revalidatePath("/matches");
@@ -79,6 +85,7 @@ export async function eventStatusAction(formData: FormData) {
     String(formData.get("eventId") ?? ""),
     String(formData.get("status") ?? "") as EventStatus,
   );
+  invalidatePublicEvents();
   revalidatePath("/admin/events");
   revalidatePath("/matches");
   revalidatePath("/");
@@ -93,6 +100,7 @@ export async function eventRoomAction(formData: FormData) {
     String(formData.get("roomId") ?? ""),
     String(formData.get("roomPassword") ?? ""),
   );
+  invalidatePublicEvents();
   revalidatePath("/admin/events");
   revalidatePath("/matches");
   revalidatePath("/");
@@ -110,6 +118,7 @@ export async function registerEventAction(
     await registerForEvent(session.user.id, {
       eventId,
     });
+    invalidatePublicEvents();
     revalidatePath("/matches");
     revalidatePath(`/events/${eventId}`);
     revalidatePath("/");
@@ -129,6 +138,7 @@ export async function payPrizesAction(formData: FormData) {
     }))
     .filter((row) => row.teamId);
   await payEventPrizes(session.user.id, eventId, placements);
+  invalidatePublicEvents();
   revalidatePath("/admin/events");
   revalidatePath("/rank");
 }

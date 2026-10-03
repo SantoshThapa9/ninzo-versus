@@ -11,10 +11,18 @@ export function AdminLink() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    fetch("/api/auth/session")
-      .then((response) => (response.ok ? response.json() : null))
+    fetch("/api/auth/session", { signal: AbortSignal.timeout(4_000) })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Session request failed with ${response.status}.`);
+        }
+        return response.json();
+      })
       .then((session: SessionResponse) => setIsAdmin(session?.user?.role === UserRole.ADMIN))
-      .catch(() => setIsAdmin(false));
+      .catch((error: unknown) => {
+        console.error("[navigation] Could not load the current session.", error);
+        setIsAdmin(false);
+      });
   }, []);
 
   return isAdmin ? (

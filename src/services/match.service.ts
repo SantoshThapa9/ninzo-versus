@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ClientSession } from "mongoose";
+import { unstable_cache } from "next/cache";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { applyPercent, isValidTokenAmount, roundTokens } from "@/lib/utils";
@@ -32,7 +33,10 @@ import {
   validateMatchScreenshots,
   type VisionResult,
 } from "@/services/ai.service";
-import { getCurrentUserIdentity } from "@/services/player-profile.service";
+import {
+  getCurrentUserIdentities,
+  getCurrentUserIdentity,
+} from "@/services/player-profile.service";
 import { getOrCreateSeasonForDate } from "@/services/season.service";
 
 const createMatchSchema = z.object({
@@ -101,16 +105,6 @@ export async function createClashMatch(userId: string, raw: unknown) {
       "Save your In Game Name and Free Fire UID in your profile before posting a match.",
       "PROFILE_REQUIRED",
     );
-
-  const duplicate = await MatchModel.findOne({
-    creatorId: userId,
-    status: MatchStatus.OPEN,
-    format: input.format,
-    stakeMin: input.stakeMin,
-    stakeMax: input.stakeMax,
-    rules: input.rules,
-  }).lean();
-  if (duplicate) return duplicate as typeof duplicate;
 
   return withTransaction(async (session) => {
     const user = await userRepository.findById(userId, session);
@@ -467,15 +461,6 @@ export async function submitMatchEvidence(
       expiresAt,
       aiAnalysis: { confidence: 0, raw: { rejectionReason: reason } },
     });
-    await MatchModel.findByIdAndUpdate(matchId, {
-      $set: {
-        aiWinnerRecommendation:
-          "one player's third failed screenshot requires admin review",
-        provisionalResult: "HOLD",
-        status: MatchStatus.DISPUTED,
-        completedAt: new Date(),
-      },
-    });
     await auditRepository.write({
       actorId: userId,
       action: "match.evidence.admin_review_required",
@@ -484,7 +469,7 @@ export async function submitMatchEvidence(
       metadata: { reason, attempt, evidenceId: String(submission._id) },
     });
     throw new AppError(
-      "Your third screenshot could not be verified. It has been saved for admin review.",
+      "Your third screenshot could not be verified and has been saved. The match will be sent for admin review after the other player submits a screenshot.",
       "ADMIN_REVIEW_REQUIRED",
       422,
       { failedUploadAttempts: attempt },
@@ -1175,6 +1160,7 @@ export async function adminSettleMatch(
       [participantIds[0], participantIds[1]],
       winnerId,
       completedAt,
+      season._id,
       session,
     );
     await MatchChatMessageModel.updateMany(
@@ -1205,37 +1191,38 @@ export async function adminSettleMatch(
   });
 }
 
-export async function listOpenMatches() {
-  await connectDb();
-  const matches = await matchRepository.listOpen();
-  const creatorIds = [
-    ...new Set(matches.map((match) => String(match.creatorId))),
-  ];
-  const identities = await Promise.all(
-    creatorIds.map(
-      async (userId) => [userId, await getCurrentUserIdentity(userId)] as const,
-    ),
-  );
-  const identityByUserId = new Map(
-    identities.map(([userId, identity]) => [userId, identity]),
-  );
+const getCachedOpenMatches = unstable_cache(
+  async () => {
+    await connectDb();
+    const matches = await matchRepository.listOpen();
+    const identities = await getCurrentUserIdentities(
+      matches.map((match) => String(match.creatorId)),
+    );
 
-  return matches.map((match) => {
-    const rules = String(match.rules ?? "");
-    const headshot = /only headshots:\s*yes/i.test(rules) ? "Yes" : "No";
-    const characterSkill = /character skill allowed:\s*yes/i.test(rules)
-      ? "Yes"
-      : "No";
-    return {
-      ...match,
-      creatorIgn:
-        identityByUserId.get(String(match.creatorId))?.ign ||
-        match.creatorIgn ||
-        "Player 1",
-      headshot,
-      characterSkill,
-    };
-  });
+    return matches.map((match) => {
+      const rules = String(match.rules ?? "");
+      return {
+        _id: String(match._id),
+        creatorIgn:
+          identities.get(String(match.creatorId))?.ign ||
+          match.creatorIgn ||
+          "Player 1",
+        format: match.format,
+        stakeMin: match.stakeMin,
+        stakeMax: match.stakeMax,
+        headshot: /only headshots:\s*yes/i.test(rules) ? "Yes" : "No",
+        characterSkill: /character skill allowed:\s*yes/i.test(rules)
+          ? "Yes"
+          : "No",
+      };
+    });
+  },
+  ["public-open-matches"],
+  { revalidate: 10, tags: ["public-open-matches"] },
+);
+
+export async function listOpenMatches() {
+  return getCachedOpenMatches();
 }
 
 export async function listChallengeAcceptancesForCreator(userId: string) {
@@ -1343,25 +1330,39 @@ export async function pruneExpiredMatchHistory(userId?: string) {
       : {}),
     completedAt: { $lt: cutoff },
     status: { $in: [MatchStatus.SETTLED, MatchStatus.CANCELLED] },
-  }).lean();
+  })
+    .select("_id")
+    .maxTimeMS(8_000)
+    .lean();
 
-  for (const match of matches) {
-    await MatchChatMessageModel.deleteMany({ matchId: match._id });
-    await resultRepository.deleteManyForMatch(String(match._id));
-    await MatchModel.deleteOne({ _id: match._id });
-  }
+  if (!matches.length) return;
+  const matchIds = matches.map((match) => String(match._id));
+  await Promise.all([
+    MatchChatMessageModel.deleteMany({ matchId: { $in: matchIds } }),
+    resultRepository.deleteManyForMatches(matchIds),
+  ]);
+  await MatchModel.deleteMany({ _id: { $in: matchIds } });
 }
 
 export async function listPreviousMatchesForUser(userId: string) {
   await connectDb();
   await pruneExpiredMatchHistory(userId);
   const matches = await matchRepository.listPreviousForUser(userId);
-  const participants = await Promise.all(
-    matches.map(async (match) => ({
-      match,
-      participants: await matchRepository.listParticipants(String(match._id)),
-    })),
+  if (!matches.length) return [];
+  const allParticipants = await matchRepository.listParticipantsForMatches(
+    matches.map((match) => String(match._id)),
   );
+  const participantsByMatchId = new Map<string, typeof allParticipants>();
+  for (const participant of allParticipants) {
+    const matchId = String(participant.matchId);
+    const matchParticipants = participantsByMatchId.get(matchId) ?? [];
+    matchParticipants.push(participant);
+    participantsByMatchId.set(matchId, matchParticipants);
+  }
+  const participants = matches.map((match) => ({
+    match,
+    participants: participantsByMatchId.get(String(match._id)) ?? [],
+  }));
   return participants.map(({ match, participants: players }) => {
     const creator = players.find(
       (player) => String(player.userId) === String(match.creatorId),
@@ -1412,14 +1413,24 @@ export async function listMatchesForUser(
     status: { $in: statusMap[filter] },
   })
     .sort({ updatedAt: -1 })
+    .maxTimeMS(8_000)
     .lean();
 
-  const participants = await Promise.all(
-    matches.map(async (match) => ({
-      match,
-      participants: await matchRepository.listParticipants(String(match._id)),
-    })),
+  if (!matches.length) return [];
+  const allParticipants = await matchRepository.listParticipantsForMatches(
+    matches.map((match) => String(match._id)),
   );
+  const participantsByMatchId = new Map<string, typeof allParticipants>();
+  for (const participant of allParticipants) {
+    const matchId = String(participant.matchId);
+    const matchParticipants = participantsByMatchId.get(matchId) ?? [];
+    matchParticipants.push(participant);
+    participantsByMatchId.set(matchId, matchParticipants);
+  }
+  const participants = matches.map((match) => ({
+    match,
+    participants: participantsByMatchId.get(String(match._id)) ?? [],
+  }));
   const allUserIds = [
     ...new Set(
       participants.flatMap(({ match, participants: players }) => [
@@ -1429,19 +1440,7 @@ export async function listMatchesForUser(
       ]),
     ),
   ];
-  const userIdentityMap = new Map(
-    (
-      await Promise.all(
-        allUserIds.map(
-          async (currentUserId) =>
-            [
-              currentUserId,
-              await getCurrentUserIdentity(currentUserId),
-            ] as const,
-        ),
-      )
-    ).map(([currentUserId, identity]) => [currentUserId, identity]),
-  );
+  const userIdentityMap = await getCurrentUserIdentities(allUserIds);
 
   return participants.map(({ match, participants: players }) => {
     // These names describe the two fixed sides of the match, rather than the
@@ -1492,26 +1491,19 @@ export async function getMatchForUser(
     : await matchRepository.findById(matchId);
   if (!match) throw new AppError("Match not found.", "NOT_FOUND", 404);
   const participants = await matchRepository.listParticipants(matchId);
-  const identities = await Promise.all(
-    participants.map(async (participant) => {
-      const currentIdentity = await getCurrentUserIdentity(
-        String(participant.userId),
-      );
-      return {
-        userId: String(participant.userId),
-        ign: currentIdentity.ign || participant.ign || "Player",
-        uid: currentIdentity.uid || participant.uid || "UID not set",
-      };
-    }),
-  );
-  const identityByUserId = new Map(
-    identities.map((identity) => [identity.userId, identity]),
-  );
   const isHistorical =
     match.status === MatchStatus.SETTLED ||
     match.status === MatchStatus.CANCELLED;
-  const evidence = await resultRepository.listForMatch(matchId);
   const isParticipant = participants.some((p) => String(p.userId) === userId);
+  const [identityByUserId, evidence, settings] = await Promise.all([
+    getCurrentUserIdentities(
+      isHistorical ? [] : participants.map((participant) => String(participant.userId)),
+    ),
+    isParticipant || isAdmin
+      ? resultRepository.listForMatch(matchId)
+      : Promise.resolve([]),
+    getPlatformSettings(),
+  ]);
   return {
     match: {
       ...JSON.parse(JSON.stringify(match)),
@@ -1537,6 +1529,6 @@ export async function getMatchForUser(
           "UID not set"),
     })),
     evidence: isParticipant || isAdmin ? evidence : [],
-    settings: await getPlatformSettings(),
+    settings,
   };
 }

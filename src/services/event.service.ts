@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Types } from "mongoose";
+import { unstable_cache } from "next/cache";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { isValidTokenAmount, roundTokens } from "@/lib/utils";
@@ -315,10 +316,46 @@ export async function payEventPrizes(
   });
 }
 
+const getCachedPublicEvents = unstable_cache(
+  async () => {
+    await connectDb();
+    const events = await eventRepository.listPublic();
+    return events.map((event) => ({
+      _id: String(event._id),
+      name: event.name,
+      customNotes: event.customNotes,
+      status: event.status,
+      eventDate: event.eventDate.toISOString(),
+      reservedSlots: event.reservedSlots,
+      maxSlots: event.maxSlots,
+      entryFeeCoins: event.entryFeeCoins,
+      format: event.format,
+    }));
+  },
+  ["public-event-list"],
+  { revalidate: 15, tags: ["public-events"] },
+);
+
+let lastEventRolloverAt = 0;
+let eventRolloverPromise: Promise<void> | null = null;
+
+async function ensureExpiredEventsRolled() {
+  if (Date.now() - lastEventRolloverAt < 30_000) return;
+  if (!eventRolloverPromise) {
+    eventRolloverPromise = rollExpiredEvents()
+      .then(() => {
+        lastEventRolloverAt = Date.now();
+      })
+      .finally(() => {
+        eventRolloverPromise = null;
+      });
+  }
+  await eventRolloverPromise;
+}
+
 export async function listPublicEvents() {
-  await connectDb();
-  await rollExpiredEvents();
-  return eventRepository.listPublic();
+  await ensureExpiredEventsRolled();
+  return getCachedPublicEvents();
 }
 
 export type CompletedEventResult = {

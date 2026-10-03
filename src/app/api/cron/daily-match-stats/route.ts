@@ -1,5 +1,5 @@
 import { AppError, toErrorMessage } from "@/lib/errors";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { assertCronSecret } from "@/services/media.service";
 import { incrementDailyMatchesPlayed } from "@/services/user-stats.service";
 
@@ -15,6 +15,7 @@ export async function GET(request: Request) {
     }
     const result = await incrementDailyMatchesPlayed();
     if (result.executed) {
+      revalidateTag("global-rankings", "max");
       revalidatePath("/rank");
       revalidatePath("/profile");
     }

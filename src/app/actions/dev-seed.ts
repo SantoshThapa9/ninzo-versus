@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { isLocalDevelopmentRequest } from "@/lib/dev-seed-access";
 import { saveDevDummyUser } from "@/services/dev-seed.service";
 
@@ -30,6 +30,7 @@ export async function devSeedAction(
 
   try {
     const result = await saveDevDummyUser(input, selectedUserId);
+    updateTag("global-rankings");
     revalidatePath("/rank");
     return { ok: true, ...result };
   } catch (error) {

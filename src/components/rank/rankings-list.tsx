@@ -48,6 +48,7 @@ export function RankingsList({
           offset: String(offsetRef.current),
           limit: String(RANK_PAGE_SIZE),
         })}`,
+        { signal: AbortSignal.timeout(8_000) },
       );
       if (!res.ok) throw new Error("Failed to load more rankings");
       const data = (await res.json()) as {
@@ -119,7 +120,7 @@ export function RankingsList({
                 {player.displayName}
               </p>
               <p className="text-xs text-[var(--muted)]">
-                {player.wins} wins · {player.losses} losses · {player.matches} matches
+                {player.wins} wins · {player.matches} matches
               </p>
             </div>
             <div className="text-right">

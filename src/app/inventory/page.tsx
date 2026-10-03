@@ -2,7 +2,6 @@ import { auth } from "@/auth";
 import { connectDb } from "@/lib/db/mongoose";
 import { userRepository } from "@/repositories/user.repository";
 import { ledgerRepository } from "@/repositories/finance.repository";
-import { getPlatformSettings } from "@/services/settings.service";
 import { listWithdrawals } from "@/services/withdrawal.service";
 import { DepositForm } from "@/components/wallet/deposit-form";
 import { ActionForm } from "@/components/forms/action-form";
@@ -32,15 +31,14 @@ export default async function InventoryPage() {
   const session = await auth();
   await connectDb();
   const userId = session?.user?.id;
-  const [user, settings, ledger, withdrawals, dailyReward] = userId
+  const [user, ledger, withdrawals, dailyReward] = userId
     ? await Promise.all([
         userRepository.findById(userId),
-        getPlatformSettings(),
         ledgerRepository.listForUser(userId),
         listWithdrawals(userId),
         getDailyFreeRewardStatus(userId),
       ])
-    : [null, await getPlatformSettings(), [], [], null];
+    : [null, [], [], null];
   const nextRewardDay = new Date();
   nextRewardDay.setUTCDate(nextRewardDay.getUTCDate() + 1);
   const nextRewardLabel = nextRewardDay.toLocaleDateString("en-IN", {

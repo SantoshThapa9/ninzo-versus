@@ -1,5 +1,5 @@
 import { RANK_PAGE_SIZE } from "@/lib/rank";
-import { listGlobalRanks } from "@/services/rank.service";
+import { listSeasonRanks } from "@/services/rank.service";
 import { getSeasonBySlug } from "@/services/season.service";
 
 export async function GET(request: Request) {
@@ -12,6 +12,6 @@ export async function GET(request: Request) {
   }
 
   const season = await getSeasonBySlug(searchParams.get("season") ?? undefined);
-  const { players, hasMore } = await listGlobalRanks(season, limit, offset);
+  const { players, hasMore } = await listSeasonRanks(season, limit, offset);
   return Response.json({ players, hasMore, offset, limit });
 }
