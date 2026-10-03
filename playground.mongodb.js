@@ -1,8 +1,8 @@
 db.getSiblingDB("test").users.updateMany(
   {
-    wins: { $exists: true },
+    ign: { $in: ["KITTU", "GAANJA"] },
   },
   {
-    $set: { wins: 0 },
+    $set: { matchesPlayed: 1 },
   },
 );

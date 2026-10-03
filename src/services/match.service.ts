@@ -1082,6 +1082,11 @@ export async function adminSettleMatch(
       String(match.creatorId),
       String(match.opponentCaptainId),
     ];
+    // A draw chosen while resolving an admin hold voids the result rather than
+    // recording it as a played match. Keep ordinary (non-disputed) draws in
+    // the ranked statistics.
+    const isAdminReviewDraw =
+      match.status === MatchStatus.DISPUTED && winnerTeam === "DRAW";
     const winnerId =
       winnerTeam === "A"
         ? participantIds[0]
@@ -1154,15 +1159,18 @@ export async function adminSettleMatch(
     match.completedAt = completedAt;
     match.seasonId = season._id;
     await match.save({ session });
-    // Stats are derived from the server-side settlement decision. A draw
-    // increments matchesPlayed and activity for both players, but awards no win.
-    await userRepository.recordSettledMatchResult(
-      [participantIds[0], participantIds[1]],
-      winnerId,
-      completedAt,
-      season._id,
-      session,
-    );
+    // Stats are derived from the server-side settlement decision. An ordinary
+    // draw increments matchesPlayed and activity without awarding a win, but a
+    // draw resolving an admin-review hold does not count as a played match.
+    if (!isAdminReviewDraw) {
+      await userRepository.recordSettledMatchResult(
+        [participantIds[0], participantIds[1]],
+        winnerId,
+        completedAt,
+        season._id,
+        session,
+      );
+    }
     await MatchChatMessageModel.updateMany(
       { matchId },
       {
@@ -1183,6 +1191,7 @@ export async function adminSettleMatch(
         winnerTeam,
         winnerId: winnerId ?? null,
         resolution: winnerId ? "winner" : "draw",
+        countsAsPlayedMatch: !isAdminReviewDraw,
         drawPayouts: winnerId ? undefined : drawPayouts,
         platformFeeAmount,
       },
