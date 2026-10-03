@@ -182,6 +182,9 @@ export async function getMatchChat(userId: string, matchId: string) {
       (match.completedBy?.length ?? 0) > 0,
     matchStatus: match.status,
     failedUploadAttempts,
+    chatNotificationsMuted: (match.chatNotificationMutedBy ?? []).some(
+      (mutedUserId: unknown) => String(mutedUserId) === userId,
+    ),
     result:
       match.status === "settled"
         ? (match.winnerTeam === "A") === (String(match.creatorId) === userId)
@@ -224,6 +227,20 @@ export async function getMatchChat(userId: string, matchId: string) {
   };
 }
 
+export async function setMatchChatNotificationsMuted(
+  userId: string,
+  matchId: string,
+  muted: boolean,
+) {
+  await connectDb();
+  await getParticipantMatch(userId, matchId);
+  const update = muted
+    ? { $addToSet: { chatNotificationMutedBy: userId } }
+    : { $pull: { chatNotificationMutedBy: userId } };
+  await matchRepository.updateById(matchId, update);
+  return { muted };
+}
+
 export async function sendMatchChatMessage(
   userId: string,
   matchId: string,
@@ -242,10 +259,20 @@ export async function sendMatchChatMessage(
     expiresAt,
   });
   const user = await UserModel.findById(userId).select("ign").lean();
+  const match = await getParticipantMatch(userId, matchId);
+  const recipientId =
+    String(match.creatorId) === userId
+      ? String(match.opponentCaptainId)
+      : String(match.creatorId);
+  const recipientHasMutedChat = (match.chatNotificationMutedBy ?? []).some(
+    (mutedUserId: unknown) => String(mutedUserId) === recipientId,
+  );
   const created = message.toObject();
   return {
     ...created,
     body: publicChatBody(created.body),
     senderName: user?.ign || "Player",
+    recipientId,
+    recipientHasMutedChat,
   };
 }

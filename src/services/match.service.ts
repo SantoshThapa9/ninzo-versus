@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ClientSession } from "mongoose";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { applyPercent, isValidTokenAmount, roundTokens } from "@/lib/utils";
@@ -26,11 +27,13 @@ import {
 import { CoinTxnType, EvidenceKind, MatchStatus } from "@/types/enums";
 import {
   analyzeMatchScreenshot,
+  extractedChallengePlayersMatch,
   extractedIgnMatchesPlayer,
   validateMatchScreenshots,
   type VisionResult,
 } from "@/services/ai.service";
 import { getCurrentUserIdentity } from "@/services/player-profile.service";
+import { getOrCreateSeasonForDate } from "@/services/season.service";
 
 const createMatchSchema = z.object({
   format: z
@@ -68,6 +71,18 @@ const acceptMatchSchema = z.object({
   warningAcknowledged: z.literal(true),
 });
 
+async function assertNoOpenMatch(
+  userId: string,
+  session: ClientSession,
+) {
+  if (await matchRepository.hasOpenForUser(userId, session)) {
+    throw new AppError(
+      "You already have an open challenge. You can accept or create another challenge after it is no longer open.",
+      "OPEN_MATCH_EXISTS",
+    );
+  }
+}
+
 export async function createClashMatch(userId: string, raw: unknown) {
   const input = createMatchSchema.parse(raw);
   if (input.stakeMax < input.stakeMin) {
@@ -78,6 +93,7 @@ export async function createClashMatch(userId: string, raw: unknown) {
   }
 
   await connectDb();
+  const season = await getOrCreateSeasonForDate(new Date());
   const settings = await getPlatformSettings();
   const currentIdentity = await getCurrentUserIdentity(userId);
   if (!currentIdentity.ign)
@@ -105,6 +121,7 @@ export async function createClashMatch(userId: string, raw: unknown) {
         403,
       );
     }
+    await assertNoOpenMatch(userId, session);
     if (user.availableCoins < input.stakeMax) {
       throw new AppError(
         "Not enough NV Tokens for the selected match registration.",
@@ -115,6 +132,7 @@ export async function createClashMatch(userId: string, raw: unknown) {
     const match = await matchRepository.create(
       {
         format: input.format,
+        seasonId: season._id,
         creatorId: user._id,
         creatorIgn: currentIdentity.ign,
         rules: input.rules,
@@ -186,6 +204,7 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
     if (String(match.creatorId) === userId) {
       throw new AppError("You cannot accept your own match.", "SELF_ACCEPT");
     }
+    await assertNoOpenMatch(userId, session);
     if (match.opponentCaptainId && String(match.opponentCaptainId) !== userId) {
       throw new AppError(
         "This challenge already has an opponent.",
@@ -272,6 +291,53 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
     match.lockedStake = input.stake;
     await match.save({ session });
     return { match, acceptedNow: true };
+  });
+}
+
+export async function deleteOpenClashMatch(userId: string, matchId: string) {
+  await connectDb();
+  return withTransaction(async (session) => {
+    const match = await matchRepository.findById(matchId, session);
+    if (!match) throw new AppError("Match not found.", "NOT_FOUND", 404);
+    if (String(match.creatorId) !== userId) {
+      throw new AppError(
+        "Only the challenge creator can delete this post.",
+        "FORBIDDEN",
+        403,
+      );
+    }
+    if (match.status !== MatchStatus.OPEN) {
+      throw new AppError(
+        "Only an open challenge post can be deleted.",
+        "MATCH_NOT_OPEN",
+      );
+    }
+
+    await applyLedger({
+      userId,
+      type: CoinTxnType.STAKE_REFUND,
+      amount: match.lockedStake,
+      availableDelta: match.lockedStake,
+      lockedDelta: -match.lockedStake,
+      referenceType: "Match",
+      referenceId: matchId,
+      idempotencyKey: `post-delete-refund:${matchId}:${userId}`,
+      session,
+    });
+
+    match.status = MatchStatus.CANCELLED;
+    match.completedAt = new Date();
+    await match.save({ session });
+
+    await auditRepository.write({
+      actorId: userId,
+      action: "match.post_deleted",
+      entityType: "Match",
+      entityId: matchId,
+      metadata: { refundedStake: match.lockedStake },
+    });
+
+    return match;
   });
 }
 
@@ -392,8 +458,6 @@ export async function submitMatchEvidence(
       );
     }
 
-    // Preserve the final failed image so an administrator has the actual
-    // evidence the player submitted when deciding the match.
     const submission = await resultRepository.create({
       matchId,
       userId,
@@ -403,13 +467,13 @@ export async function submitMatchEvidence(
       expiresAt,
       aiAnalysis: { confidence: 0, raw: { rejectionReason: reason } },
     });
-    // Keep evidence submission open for the other player. This player's third
-    // image is now locked as their evidence, and the match will move to admin
-    // review once the other player's evidence is submitted and checked.
     await MatchModel.findByIdAndUpdate(matchId, {
       $set: {
         aiWinnerRecommendation:
-          "one player's third screenshot requires admin review",
+          "one player's third failed screenshot requires admin review",
+        provisionalResult: "HOLD",
+        status: MatchStatus.DISPUTED,
+        completedAt: new Date(),
       },
     });
     await auditRepository.write({
@@ -420,7 +484,7 @@ export async function submitMatchEvidence(
       metadata: { reason, attempt, evidenceId: String(submission._id) },
     });
     throw new AppError(
-      "Your third screenshot could not be verified. It has been saved for admin review; the other player can still submit their screenshot.",
+      "Your third screenshot could not be verified. It has been saved for admin review.",
       "ADMIN_REVIEW_REQUIRED",
       422,
       { failedUploadAttempts: attempt },
@@ -443,11 +507,7 @@ export async function submitMatchEvidence(
     : undefined;
   let analysis: VisionResult = { confidence: 0 };
   try {
-    analysis =
-      (await analyzeMatchScreenshot(blobPathname, [
-        platformIgn ?? "",
-        opponentIgn ?? "",
-      ])) ?? analysis;
+    analysis = (await analyzeMatchScreenshot(blobPathname)) ?? analysis;
   } catch {
     console.error("[match-ai] Screenshot analysis failed.", {
       matchId,
@@ -472,6 +532,19 @@ export async function submitMatchEvidence(
     },
   );
   analysis = normalizedAnalysis;
+
+  if (
+    !extractedChallengePlayersMatch(analysis.playerIGNs, [
+      platformIgn ?? "",
+      opponentIgn ?? "",
+    ])
+  ) {
+    console.warn(
+      "[match-ai] Screenshot rejected: both registered player IGNs were not confirmed.",
+      { matchId, userId },
+    );
+    await registerUnreadableScreenshot("winner IGN unreadable or unregistered");
+  }
 
   if (!analysis.roomId || !analysis.winnerIGN) {
     console.warn(
@@ -618,7 +691,12 @@ export async function finalizeMatchEvidence(matchId: string) {
       const sameRoom = (left?: string, right?: string) => {
         const a = normalizeRoomId(left);
         const b = normalizeRoomId(right);
-        return Boolean(a && b && a === b);
+        if (!a || !b) return false;
+        let matchingDigits = 0;
+        for (let index = 0; index < 7; index += 1) {
+          if (a[index] === b[index]) matchingDigits += 1;
+        }
+        return matchingDigits >= 4;
       };
       // Confidence is useful for observability, but it is not reliable enough
       // to override two complete Vision API extractions.
@@ -641,10 +719,18 @@ export async function finalizeMatchEvidence(matchId: string) {
               players: [creatorIgn ?? "", opponentIgn ?? ""],
             })
           : undefined;
+      const roomIdsReadable = Boolean(
+        normalizeRoomId(creatorResult.roomId) &&
+        normalizeRoomId(opponentResult.roomId),
+      );
+      const roomIdsMatch = sameRoom(
+        creatorResult.roomId,
+        opponentResult.roomId,
+      );
       const common =
         complete(creatorResult) &&
         complete(opponentResult) &&
-        sameRoom(creatorResult?.roomId, opponentResult?.roomId) &&
+        roomIdsMatch &&
         validation?.valid;
       const creatorWon = common && validation?.winner === creatorIgn;
       const opponentWon = common && validation?.winner === opponentIgn;
@@ -663,7 +749,7 @@ export async function finalizeMatchEvidence(matchId: string) {
         },
         snapshotPlayers: { creatorIgn, opponentIgn },
         checks: {
-          sameRoom: sameRoom(creatorResult?.roomId, opponentResult?.roomId),
+          sameRoom: roomIdsMatch,
           sameRegisteredWinner: Boolean(validation?.valid),
           validationReason: validation?.reason ?? null,
           creatorWon,
@@ -710,6 +796,84 @@ export async function finalizeMatchEvidence(matchId: string) {
           }
           throw error;
         }
+      } else if (roomIdsReadable && !roomIdsMatch) {
+        const rejectedSubmission = resultEvidence[0];
+        const rejectedUserId = String(rejectedSubmission.userId);
+        const reason = "room IDs differ";
+        await evidenceAttemptRepository.recordFailure({
+          matchId,
+          userId: rejectedUserId,
+          reason,
+        });
+        const attempts = await evidenceAttemptRepository.countFailures(
+          matchId,
+          rejectedUserId,
+        );
+
+        if (attempts >= 3) {
+          claimed.aiWinnerRecommendation =
+            "held after repeated room ID mismatches";
+          claimed.aiAnalysis = {
+            individual: [creatorResult, opponentResult],
+            final: validation,
+            verification: "room IDs differ after maximum screenshot retries",
+          };
+          claimed.provisionalResult = "HOLD";
+          claimed.status = MatchStatus.DISPUTED;
+          claimed.completedAt = new Date();
+          await claimed.save();
+          await auditRepository.write({
+            action: "match.evidence.admin_review_required",
+            entityType: "Match",
+            entityId: matchId,
+            metadata: {
+              reason,
+              rejectedUserId,
+              attempts,
+            },
+          });
+          console.warn(
+            "[match-ai] Repeated room ID mismatch reached the upload limit; match placed on admin hold.",
+            { matchId, rejectedUserId, attempts },
+          );
+          return;
+        }
+
+        try {
+          await deletePrivateMedia(rejectedSubmission.blobPathname);
+        } catch (error) {
+          console.error(
+            "[match-ai] Could not remove room-mismatched screenshot upload.",
+            {
+              matchId,
+              evidenceId: String(rejectedSubmission._id),
+              error: error instanceof Error ? error.message : "Unknown error",
+            },
+          );
+        }
+        await resultRepository.deleteManyByIds([
+          String(rejectedSubmission._id),
+        ]);
+        await MatchModel.findByIdAndUpdate(matchId, {
+          $set: {
+            status: MatchStatus.AWAITING_EVIDENCE,
+            provisionalResult: null,
+          },
+          $unset: {
+            aiAnalysisStartedAt: 1,
+            aiAnalysis: 1,
+            aiWinnerRecommendation: 1,
+          },
+        });
+        console.info(
+          "[match-ai] Room IDs did not match; rejected the latest screenshot and reopened uploads.",
+          { matchId, rejectedUserId, attempts },
+        );
+        throw new AppError(
+          "Can't find detail, upload again.",
+          "SCREENSHOT_REUPLOAD_REQUIRED",
+          422,
+        );
       } else {
         claimed.aiWinnerRecommendation = "held for admin review";
         claimed.aiAnalysis = {
@@ -893,6 +1057,8 @@ export async function adminSettleMatch(
   verifiedRoomId?: string,
 ) {
   await connectDb();
+  const completedAt = new Date();
+  const season = await getOrCreateSeasonForDate(completedAt);
   return withTransaction(async (session) => {
     const match = await matchRepository.findById(matchId, session);
     if (!match) throw new AppError("Match not found.", "NOT_FOUND", 404);
@@ -1000,8 +1166,17 @@ export async function adminSettleMatch(
     match.platformFeeAmount = platformFeeAmount;
     match.winnerPayout = winnerId ? winnerPayout : 0;
     match.status = MatchStatus.SETTLED;
-    match.completedAt = new Date();
+    match.completedAt = completedAt;
+    match.seasonId = season._id;
     await match.save({ session });
+    // Stats are derived from the server-side settlement decision. A draw
+    // increments matchesPlayed and activity for both players, but awards no win.
+    await userRepository.recordSettledMatchResult(
+      [participantIds[0], participantIds[1]],
+      winnerId,
+      completedAt,
+      session,
+    );
     await MatchChatMessageModel.updateMany(
       { matchId },
       {

@@ -1,13 +1,20 @@
 import { z } from "zod";
+import { Types } from "mongoose";
 import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { isValidTokenAmount, roundTokens } from "@/lib/utils";
 import { DEFAULT_PRIZE_SPLIT } from "@/config/defaults";
 import { eventRepository } from "@/repositories/event.repository";
+import { getOrCreateSeasonForDate } from "@/services/season.service";
 import { applyLedger } from "@/services/wallet.service";
 import { auditRepository } from "@/repositories/ops.repository";
 import { getCurrentUserIdentity } from "@/services/player-profile.service";
 import { CoinTxnType, EventFormat, EventStatus } from "@/types/enums";
+import {
+  eventDateFromStoredDate,
+  eventOccurrenceInIst,
+  nextFutureEventOccurrence,
+} from "@/lib/event-rollover";
 
 const eventFieldsSchema = z.object({
   name: z.string().min(3),
@@ -67,32 +74,43 @@ const eventUpdateSchema = eventFieldsSchema.partial().superRefine((value, ctx) =
 });
 
 function eventStartAt(eventDate: string, startTime: string) {
-  const value = new Date(`${eventDate}T${startTime}:00+05:30`);
-  if (Number.isNaN(value.getTime())) throw new AppError("Choose a valid event start.", "INVALID_EVENT_START");
-  return value;
-}
-
-function dateString(value: Date) {
-  return value.toISOString().slice(0, 10);
-}
-
-async function rollEventForwardIfPast(event: { eventDate: Date; startTime: string; registrationClosesAt: Date; save: () => Promise<unknown>; status: string }) {
-  if (event.status !== EventStatus.PUBLISHED && event.status !== EventStatus.REGISTRATION_OPEN) return;
-  let eventDate = dateString(event.eventDate);
-  let start = eventStartAt(eventDate, event.startTime);
-  const now = new Date();
-  let changed = false;
-  while (start <= now) {
-    const nextDay = new Date(`${eventDate}T00:00:00.000Z`);
-    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-    eventDate = dateString(nextDay);
-    start = eventStartAt(eventDate, event.startTime);
-    changed = true;
+  try {
+    return eventOccurrenceInIst(eventDate, startTime).startsAt;
+  } catch {
+    throw new AppError("Choose a valid event start.", "INVALID_EVENT_START");
   }
-  if (changed) {
-    event.eventDate = new Date(`${eventDate}T00:00:00.000Z`);
-    event.registrationClosesAt = start;
-    await event.save();
+}
+
+async function rollEventForwardIfPast(event: { _id: unknown; eventDate: Date; startTime: string; registrationClosesAt: Date; status: string }, now = new Date()) {
+  if (event.status !== EventStatus.PUBLISHED && event.status !== EventStatus.REGISTRATION_OPEN) return false;
+  if (event.registrationClosesAt > now) return false;
+  const occurrence = nextFutureEventOccurrence(eventDateFromStoredDate(event.eventDate), event.startTime, now);
+  const season = await getOrCreateSeasonForDate(
+    new Date(`${occurrence.eventDate}T00:00:00.000Z`),
+  );
+  const result = await eventRepository.advanceExpiredOccurrence(
+    String(event._id),
+    event.registrationClosesAt,
+    new Date(`${occurrence.eventDate}T00:00:00.000Z`),
+    occurrence.startsAt,
+    season._id,
+  );
+  return result.modifiedCount === 1;
+}
+
+/** Rolls every expired daily event. Safe for concurrent web requests and cron retries. */
+export async function rollExpiredEvents(now = new Date()) {
+  await connectDb();
+  let rolled = 0;
+  // Continue past a full page: each successful update makes its event future,
+  // and concurrent runners can only turn an update into a no-op.
+  while (true) {
+    const events = await eventRepository.listExpiredRollable(now);
+    if (!events.length) return { rolled };
+    for (const event of events) {
+      if (await rollEventForwardIfPast(event, now)) rolled += 1;
+    }
+    if (events.length < 500) return { rolled };
   }
 }
 
@@ -103,9 +121,12 @@ const registerSchema = z.object({
 export async function createEvent(adminId: string, raw: unknown) {
   const input = eventSchema.parse(raw);
   await connectDb();
+  const eventDate = new Date(`${input.eventDate}T00:00:00.000Z`);
+  const season = await getOrCreateSeasonForDate(eventDate);
   const event = await eventRepository.create({
     ...input,
-    eventDate: new Date(`${input.eventDate}T00:00:00.000Z`),
+    eventDate,
+    seasonId: season._id,
     registrationOpensAt: new Date(),
     registrationClosesAt: eventStartAt(input.eventDate, input.startTime),
     createdBy: adminId,
@@ -127,9 +148,13 @@ export async function updateEvent(adminId: string, eventId: string, raw: unknown
   if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
   const eventDate = input.eventDate ?? event.eventDate.toISOString().slice(0, 10);
   const startTime = input.startTime ?? event.startTime;
+  const season = await getOrCreateSeasonForDate(
+    new Date(`${eventDate}T00:00:00.000Z`),
+  );
   Object.assign(event, {
     ...input,
     eventDate: new Date(`${eventDate}T00:00:00.000Z`),
+    seasonId: season._id,
     registrationClosesAt: eventStartAt(eventDate, startTime),
   });
   await event.save();
@@ -195,7 +220,7 @@ export async function registerForEvent(userId: string, raw: unknown) {
       throw new AppError("This event is not open for registration.", "EVENT_CLOSED");
     }
     const now = new Date();
-    if (now > event.registrationClosesAt) {
+    if (now >= event.registrationClosesAt) {
       throw new AppError("Registration window is closed.", "WINDOW_CLOSED");
     }
     const identity = await getCurrentUserIdentity(userId);
@@ -292,6 +317,7 @@ export async function payEventPrizes(
 
 export async function listPublicEvents() {
   await connectDb();
+  await rollExpiredEvents();
   return eventRepository.listPublic();
 }
 
@@ -303,9 +329,11 @@ export type CompletedEventResult = {
   placements: { placement: number; igns: string[] }[];
 };
 
-export async function listCompletedEventResults(): Promise<CompletedEventResult[]> {
+export async function listCompletedEventResults(
+  season: { _id: Types.ObjectId; startDate: Date; endDate: Date },
+): Promise<CompletedEventResult[]> {
   await connectDb();
-  const events = await eventRepository.listCompleted();
+  const events = await eventRepository.listCompleted(season);
   if (!events.length) return [];
 
   const teams = await eventRepository.listPlacedTeams(events.map((event) => String(event._id)));
@@ -328,14 +356,21 @@ export async function listCompletedEventResults(): Promise<CompletedEventResult[
 
 export async function getEventDetail(eventId: string, isAdmin: boolean) {
   await connectDb();
-  const event = isAdmin
+  let event = isAdmin
     ? await eventRepository.findByIdWithRoom(eventId)
     : await eventRepository.findById(eventId);
   if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
   if (!isAdmin && event.status === EventStatus.DRAFT) {
     throw new AppError("Event not found.", "NOT_FOUND", 404);
   }
-  if (!isAdmin) await rollEventForwardIfPast(event);
+  // Admin and public reads both repair a single stale event immediately. The
+  // cron handles persistence even when there are no reads.
+  if (await rollEventForwardIfPast(event)) {
+    event = isAdmin
+      ? await eventRepository.findByIdWithRoom(eventId)
+      : await eventRepository.findById(eventId);
+    if (!event) throw new AppError("Event not found.", "NOT_FOUND", 404);
+  }
   const teams = isAdmin ? await eventRepository.listTeams(eventId) : [];
   return { event: JSON.parse(JSON.stringify(event)), teams };
 }

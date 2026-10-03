@@ -30,6 +30,10 @@ export default async function TicketPage({ params }: PageProps<"/support/[id]">)
       <Card>
         {ticket.status === "resolved" ? (
           <p className="text-sm text-[var(--muted)]">This support request has been closed.</p>
+        ) : !ticket.allowUserImageUploads ? (
+          <p className="text-sm text-[var(--muted)]">
+            Screenshot uploads are available when support enables them for this request.
+          </p>
         ) : (
           <SupportUpload ticketId={id} />
         )}

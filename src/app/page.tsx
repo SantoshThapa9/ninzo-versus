@@ -42,6 +42,19 @@ export default async function HomePage() {
     <div className="grid gap-6 pb-2">
       <Card className="relative overflow-hidden border-[var(--accent)]/25 bg-gradient-to-br from-[var(--card)] to-[#101820]">
         <div className="absolute -right-7 -top-10 h-32 w-32 rounded-full bg-[var(--accent)]/15 blur-2xl" />
+        <div className="sr-only">
+          <h2>Ninzo Versus</h2>
+          <p>
+            Ninzo Versus is a competitive player platform for tournaments,
+            challenges, seasonal global rankings, events, achievements, and
+            player showcases.
+          </p>
+          <p>
+            Discover competitive events, participate in challenges, follow
+            global rankings, build your player profile, and showcase your
+            achievements.
+          </p>
+        </div>
         <div className="relative flex items-center gap-4">
           <div className="grid size-11 shrink-0 place-items-center rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]">
             <Coins size={21} />

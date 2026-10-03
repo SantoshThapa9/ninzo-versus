@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { PendingSubmitButton } from "@/components/forms/pending-submit-button";
 import { resolveTicketAction } from "@/app/actions/support";
 import { SupportTicketChat } from "@/components/support/support-ticket-chat";
+import { SupportImageUploadToggle } from "@/components/support/support-image-upload-toggle";
 
 function formatDateTime(value?: string | Date) {
   if (!value) return "—";
@@ -103,6 +104,10 @@ export default async function AdminSupportTicketPage({ params }: PageProps<"/adm
           </Card>
         )}
       </section>
+      <SupportImageUploadToggle
+        ticketId={id}
+        initiallyEnabled={Boolean(ticket.allowUserImageUploads)}
+      />
       <SupportTicketChat ticketId={id} isAdmin />
       <Card>
         {ticket.status === "resolved" ? (

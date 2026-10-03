@@ -15,6 +15,9 @@ const SupportTicketSchema = new Schema(
     ign: { type: String, trim: true },
     whatsappNumber: { type: String, trim: true },
     summary: { type: String, required: true },
+    // Customers may attach screenshots only after an admin enables this for
+    // the individual support request.
+    allowUserImageUploads: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
@@ -40,6 +43,13 @@ if (
   !categoryValues.every((value) => cachedCategoryValues.includes(value))
 ) {
   delete models.SupportTicket;
+}
+
+// Add the new field to a development model retained through Fast Refresh.
+if (models.SupportTicket && !models.SupportTicket.schema.path("allowUserImageUploads")) {
+  models.SupportTicket.schema.add({
+    allowUserImageUploads: { type: Boolean, default: false },
+  });
 }
 
 export const SupportTicketModel =

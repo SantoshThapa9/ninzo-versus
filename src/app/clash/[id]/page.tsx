@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { acceptMatchAction } from "@/app/actions/match";
+import { acceptMatchAction, deleteMatchAction } from "@/app/actions/match";
 import { MatchChat } from "@/components/match/match-chat";
+import { ClashStatusSync } from "@/components/match/clash-status-sync";
 import { UserRole } from "@/types/enums";
 import { ShieldCheck, Swords } from "lucide-react";
 
@@ -55,6 +56,7 @@ export default async function ClashDetailPage({
     `${player?.userId === session.user.id ? "You" : (player?.ign ?? "Player")} (${player?.uid ?? "UID not set"})`;
   return (
     <div className="mx-auto grid w-full max-w-2xl gap-4 pb-2">
+      <ClashStatusSync isCreator={isCreator} status={match.status} />
       <Card className="relative overflow-hidden border-white/15 bg-transparent p-0">
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -124,6 +126,11 @@ export default async function ClashDetailPage({
           <p className="mb-4 text-sm text-[var(--muted)]">
             Your selected match registration is reserved as soon as you accept.
           </p>
+          <p className="mb-4 text-sm text-[var(--muted)]">
+            You can register with {match.stakeMin} to {match.stakeMax} NV
+            Tokens.
+          </p>
+
           <ActionForm
             action={acceptMatchAction}
             submitLabel="Register for match"
@@ -149,6 +156,21 @@ export default async function ClashDetailPage({
               <input type="checkbox" name="warning" required className="mt-1" />
               I agree to follow the match rules shown above.
             </label>
+          </ActionForm>
+        </Card>
+      ) : null}
+      {match.status === "open" && isCreator ? (
+        <Card>
+          <h2 className="mb-1 font-bold">Remove challenge post</h2>
+          <p className="mb-4 text-sm text-[var(--muted)]">
+            Deleting this open post refunds your locked challenge tokens.
+          </p>
+          <ActionForm
+            action={deleteMatchAction}
+            submitLabel="Delete challenge post"
+            confirmMessage="Delete this challenge post? Your locked challenge tokens will be refunded."
+          >
+            <input type="hidden" name="matchId" value={id} />
           </ActionForm>
         </Card>
       ) : null}

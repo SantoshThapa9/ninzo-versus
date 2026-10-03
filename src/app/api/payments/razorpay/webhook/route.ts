@@ -1,5 +1,8 @@
 import { NextRequest } from "next/server";
-import { fulfillDeposit, verifyWebhookSignature } from "@/services/payment.service";
+import {
+  fulfillDeposit,
+  verifyWebhookSignature,
+} from "@/services/payment.service";
 import { AppError, toErrorMessage } from "@/lib/errors";
 
 export async function POST(request: NextRequest) {

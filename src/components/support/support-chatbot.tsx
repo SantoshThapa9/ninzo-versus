@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useSyncExternalStore, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -10,6 +10,8 @@ type ChatMessage = {
   text: string;
 };
 
+const CHAT_STORAGE_KEY = "ninzo-support-chat";
+
 function makeMessage(sender: ChatMessage["sender"], text: string): ChatMessage {
   return {
     id: `${sender}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -18,39 +20,124 @@ function makeMessage(sender: ChatMessage["sender"], text: string): ChatMessage {
   };
 }
 
-function welcomeMessage() {
+function welcomeMessage(): ChatMessage {
   return makeMessage(
     "assistant",
-    "Hi! I’m Ninzo AI. Ask me anything about using the app and I’ll explain what to do and how to do it. For an issue that needs a team member, use Support → New → Report an Issue.",
+    "Hi! I’m Ninzo AI 👋 Chat in Hindi, English, or any language you prefer.",
   );
 }
 
+/**
+ * localStorage external store
+ */
+function getSnapshot(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return localStorage.getItem(CHAT_STORAGE_KEY) ?? "";
+}
+
+function getServerSnapshot(): string {
+  return "";
+}
+
+function subscribe(callback: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handleStorageChange = (event: StorageEvent) => {
+    if (event.key === CHAT_STORAGE_KEY) {
+      callback();
+    }
+  };
+
+  window.addEventListener("storage", handleStorageChange);
+
+  return () => {
+    window.removeEventListener("storage", handleStorageChange);
+  };
+}
+
+function readMessages(snapshot: string): ChatMessage[] {
+  if (!snapshot) {
+    return [welcomeMessage()];
+  }
+
+  try {
+    const parsed = JSON.parse(snapshot) as ChatMessage[];
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return [welcomeMessage()];
+    }
+
+    return parsed;
+  } catch {
+    return [welcomeMessage()];
+  }
+}
+
 export function SupportChatbot() {
-  const [messages, setMessages] = useState<ChatMessage[]>([welcomeMessage()]);
+  const storedChat = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+  );
+
+  const messages = readMessages(storedChat);
+
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
+  function saveMessages(nextMessages: ChatMessage[]) {
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(nextMessages));
+
+    // `storage` does not fire in the same tab, so manually notify
+    // the external store that localStorage has changed.
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CHAT_STORAGE_KEY,
+        newValue: JSON.stringify(nextMessages),
+      }),
+    );
+  }
+
   function startNewChat() {
     if (loading) return;
-    setMessages([welcomeMessage()]);
+
+    localStorage.removeItem(CHAT_STORAGE_KEY);
+
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CHAT_STORAGE_KEY,
+        newValue: null,
+      }),
+    );
+
     setMessage("");
   }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+
     const text = message.trim();
-    if (!text) return;
+
+    if (!text || loading) return;
 
     const userMessage = makeMessage("user", text);
     const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
-    setLoading(true);
+
+    saveMessages(nextMessages);
     setMessage("");
+    setLoading(true);
 
     try {
       const response = await fetch("/api/support/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           message: text,
           history: nextMessages.map((item) => ({
@@ -59,25 +146,25 @@ export function SupportChatbot() {
           })),
         }),
       });
+
       const data = (await response.json()) as {
         reply?: string;
         error?: string;
       };
-      setMessages((current) => [
-        ...current,
-        makeMessage(
-          "assistant",
-          data.reply || data.error || "I could not answer that yet.",
-        ),
-      ]);
+
+      const assistantMessage = makeMessage(
+        "assistant",
+        data.reply || data.error || "I could not answer that yet.",
+      );
+
+      saveMessages([...nextMessages, assistantMessage]);
     } catch {
-      setMessages((current) => [
-        ...current,
-        makeMessage(
-          "assistant",
-          "The support service is temporarily unavailable. Please try again in a moment.",
-        ),
-      ]);
+      const errorMessage = makeMessage(
+        "assistant",
+        "The support service is temporarily unavailable. Please try again in a moment.",
+      );
+
+      saveMessages([...nextMessages, errorMessage]);
     } finally {
       setLoading(false);
     }
@@ -91,10 +178,12 @@ export function SupportChatbot() {
             <p className="text-sm text-[var(--muted)]">Ninzo AI</p>
             <h3 className="text-base font-semibold">Support chat</h3>
           </div>
+
           <div className="flex items-center gap-3">
             <span className="rounded-full border border-emerald-400/50 bg-emerald-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-emerald-300">
               Online
             </span>
+
             <button
               type="button"
               onClick={startNewChat}
@@ -106,14 +195,20 @@ export function SupportChatbot() {
           </div>
         </header>
 
-        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+        <div className="flex-1 space-y-3 overflow-y-auto px-2 py-3">
           {messages.map((item) => (
             <div
               key={item.id}
-              className={`flex ${item.sender === "user" ? "justify-end" : "justify-start"}`}
+              className={`flex ${
+                item.sender === "user" ? "justify-end" : "justify-start"
+              }`}
             >
               <div
-                className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${item.sender === "user" ? "bg-[var(--accent)] text-black" : "border border-white/10 bg-white/5 text-white"}`}
+                className={`max-w-[95%] rounded-2xl px-3 pr-2 py-3 text-sm leading-6 shadow-sm ${
+                  item.sender === "user"
+                    ? "bg-[var(--accent)] text-black"
+                    : "border border-white/10 bg-white/5 text-white"
+                }`}
               >
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {item.text}
@@ -121,6 +216,7 @@ export function SupportChatbot() {
               </div>
             </div>
           ))}
+
           {loading ? (
             <div className="flex justify-start">
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
@@ -142,6 +238,7 @@ export function SupportChatbot() {
               placeholder="Type your message..."
               className="min-h-[52px] flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-white/35"
             />
+
             <button
               type="submit"
               disabled={loading || !message.trim()}

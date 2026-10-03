@@ -16,3 +16,4 @@ export { AIConfigurationModel } from "@/models/ai-configuration";
 export { AuditLogModel } from "@/models/audit-log";
 export { MatchChatMessageModel } from "@/models/match-chat-message";
 export { MatchEvidenceAttemptModel } from "@/models/match-evidence-attempt";
+export { ScheduledJobRunModel } from "@/models/scheduled-job-run";

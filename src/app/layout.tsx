@@ -1,67 +1,107 @@
 import type { Metadata } from "next";
 import { Toaster } from "sonner";
 import { AppShell } from "@/components/shell/app-shell";
+import { ChatNotificationListener } from "@/components/match/chat-notification-listener";
 import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ninzo-versus.vercel.app"),
+
   title: {
-    default: "Ninzo Versus | Garena Free Fire MAX Tournaments & Esports",
+    default: "Ninzo Versus | Competitive Tournaments & Global Player Rankings",
     template: "%s | Ninzo Versus",
   },
+
   description:
-    "Join Ninzo Versus for free Garena Free Fire MAX tournaments, esports challenges, and competitive 1v1 matches for players in India.",
+    "Ninzo Versus is a competitive player platform for tournaments, challenges, seasonal global rankings, events, achievements, and player showcases.",
+
   keywords: [
     "Ninzo Versus",
-    "Garena Free Fire MAX tournament",
-    "Free Fire MAX tournament India",
+    "Ninzo",
+    "competitive tournaments",
+    "esports tournaments",
+    "competitive gaming",
+    "global player rankings",
+    "seasonal rankings",
+    "player showcase",
+    "competitive events",
+    "Free Fire MAX tournaments",
     "Free Fire MAX esports",
-    "Free Fire tournament",
-    "free Free Fire tournament",
-    "Free Fire 1v1",
-    "esports free",
-    "esports challenge",
-    "1v1 challenge",
     "Free Fire tournaments India",
   ],
+
   applicationName: "Ninzo Versus",
   category: "Esports",
-  alternates: { canonical: "/" },
+
+  alternates: {
+    canonical: "/",
+  },
+
   icons: {
     icon: [
-      { url: "/favicon.ico", type: "image/x-icon" },
-      { url: "/nv.svg", type: "image/svg+xml" },
+      {
+        url: "/favicon.ico",
+        type: "image/x-icon",
+      },
+      {
+        url: "/nv.svg",
+        type: "image/svg+xml",
+      },
     ],
     shortcut: "/favicon.ico",
-    apple: [{ url: "/nv.jpg", sizes: "1024x1024", type: "image/jpeg" }],
+    apple: [
+      {
+        url: "/nv.jpg",
+        sizes: "1024x1024",
+        type: "image/jpeg",
+      },
+    ],
   },
+
   openGraph: {
     type: "website",
     locale: "en_IN",
     url: "/",
     siteName: "Ninzo Versus",
-    title: "Ninzo Versus | Garena Free Fire MAX Tournaments & Esports",
+    title: "Ninzo Versus | Competitive Tournaments & Global Player Rankings",
     description:
-      "Free Garena Free Fire MAX tournaments, esports challenges, and competitive 1v1 matches for players in India.",
+      "Compete in tournaments and challenges, follow seasonal global rankings, earn achievements, and showcase your competitive profile on Ninzo Versus.",
+    images: [
+      {
+        url: "/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Ninzo Versus — Competitive Player Platform",
+      },
+    ],
   },
+
   twitter: {
     card: "summary_large_image",
-    title: "Ninzo Versus | Garena Free Fire MAX Tournaments & Esports",
+    title: "Ninzo Versus | Competitive Tournaments & Global Player Rankings",
     description:
-      "Free Garena Free Fire MAX tournaments, esports challenges, and competitive 1v1 matches for players in India.",
+      "Compete, climb seasonal global rankings, earn achievements, and showcase your competitive profile on Ninzo Versus.",
+    images: ["/og-image.jpg"],
   },
+
   robots: {
     index: true,
     follow: true,
-    googleBot: { index: true, follow: true, "max-image-preview": "large" },
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
   },
 };
-
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
       <body>
         <AppShell>{children}</AppShell>
+        <ChatNotificationListener />
         <Toaster theme="dark" />
       </body>
     </html>

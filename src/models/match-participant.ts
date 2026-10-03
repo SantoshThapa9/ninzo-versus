@@ -14,6 +14,8 @@ const MatchParticipantSchema = new Schema(
 );
 
 MatchParticipantSchema.index({ matchId: 1, userId: 1 }, { unique: true });
+// Supports the daily stats job's "did this user play yesterday?" lookup.
+MatchParticipantSchema.index({ userId: 1, matchId: 1 });
 
 export type MatchParticipantDoc = InferSchemaType<typeof MatchParticipantSchema> & {
   _id: Types.ObjectId;

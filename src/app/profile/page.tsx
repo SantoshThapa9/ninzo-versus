@@ -2,15 +2,15 @@ import { auth } from "@/auth";
 import { connectDb } from "@/lib/db/mongoose";
 import { playerProfileRepository } from "@/repositories/player-profile.repository";
 import { userRepository } from "@/repositories/user.repository";
-import { saveProfileAction } from "@/app/actions/wallet";
 import { logoutAction } from "@/app/actions/auth";
-import { ActionForm } from "@/components/forms/action-form";
+import { ProfileDetailsForm } from "@/components/profile/profile-details-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getPlayerRank } from "@/services/rank.service";
 import { getRank } from "@/lib/rank";
+import { normalizeLastMatchPlayed } from "@/lib/last-match-played";
 import { Medal } from "lucide-react";
 import Link from "next/link";
 import { NotificationToggle } from "@/components/profile/notification-toggle";
@@ -21,7 +21,7 @@ export default async function ProfilePage() {
   const userId = session?.user?.id;
   const [user, profile, playerRank] = userId
     ? await Promise.all([
-        userRepository.findById(userId),
+        userRepository.findByIdLean(userId),
         playerProfileRepository.findByUserId(userId),
         getPlayerRank(userId),
       ])
@@ -31,7 +31,7 @@ export default async function ProfilePage() {
   // PlayerProfile values remain as a fallback for accounts not yet backfilled.
   const ign = user?.ign ?? profile?.ign ?? "";
   const uid = user?.uid ?? profile?.uid ?? "";
-
+  const lastMatchPlayed = normalizeLastMatchPlayed(user?.lastMatchPlayed);
   return (
     <div className="grid gap-4">
       <Card>
@@ -43,10 +43,10 @@ export default async function ProfilePage() {
             session?.user?.email ??
             "Sign in to save your game details."}
         </p>
-        <p className="mb-4 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-sm text-[var(--muted)]">
-          You can update your display name, In Game Name, and Free Fire UID
-          once every 24 hours.
-        </p>
+        {/* <p className="mb-4 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-sm text-[var(--muted)]">
+          Display name and age can each be changed once every 24 hours. In Game
+          Name and UID share a 24-hour limit, as do UPI ID and phone number.
+        </p> */}
         <details className="mt-2 mb-2 rounded-lg border border-white/10 bg-white/[0.03] text-sm">
           <summary className="flex cursor-pointer items-center justify-between px-3 py-2.5 text-muted transition-colors hover:text-foreground">
             <span className="flex items-center gap-2">
@@ -62,7 +62,7 @@ export default async function ProfilePage() {
               Exact in-game name is not required. Please enter your full in-game
               name as accurately as possible.
             </p>
-            <div className="mt-2 rounded-md bg-black/20 px-2.5 py-2">
+            <div className="mt-2  bg-black/20 px-2.5 py-2">
               <p className="text-xs text-muted">Example:</p>
               <p className="mt-1 font-mono text-foreground">
                 ᶜᵐ ₦Ї₦ƵØ ʟɪᴠᴇ! ➜ cm ninzo live!
@@ -71,32 +71,15 @@ export default async function ProfilePage() {
           </div>
         </details>
         {userId ? (
-          <ActionForm action={saveProfileAction} submitLabel="Save profile">
-            <div>
-              <Label htmlFor="displayName">Display name</Label>
-              <Input
-                id="displayName"
-                name="displayName"
-                defaultValue={user?.displayName ?? ""}
-                required
-                maxLength={24}
-              />
-            </div>
-            <div>
-              <Label htmlFor="ign">In Game Name</Label>
-              <Input
-                id="ign"
-                name="ign"
-                defaultValue={ign}
-                required
-                data-tour="ign"
-              />
-            </div>
-            <div>
-              <Label htmlFor="uid">Free Fire UID</Label>
-              <Input id="uid" name="uid" defaultValue={uid} data-tour="uid" />
-            </div>
-          </ActionForm>
+          <ProfileDetailsForm
+            key={`profile-age-${user?.age ?? "unset"}`}
+            displayName={user?.displayName ?? ""}
+            ign={ign}
+            uid={uid}
+            age={user?.age ?? null}
+            upiId={user?.upiId ?? ""}
+            phoneNumber={user?.phoneNumber ?? ""}
+          />
         ) : (
           <>
             <div className="grid gap-4">
@@ -162,6 +145,24 @@ export default async function ProfilePage() {
                     </p>
                   </div>
                 </div>
+                <p className="mt-3 text-xs text-[var(--muted)]">
+                  Last match played:{" "}
+                  {lastMatchPlayed
+                    ? lastMatchPlayed.toLocaleString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                        timeZone: "Asia/Kolkata",
+                      })
+                    : "No last match date recorded"}
+                </p>
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  {
+                    "Inactivity for a full day adds 1 default decay match, lowering your win rate. Play at least one match daily to prevent this."
+                  }
+                </p>
               </Card>
             );
           })()

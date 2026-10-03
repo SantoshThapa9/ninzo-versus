@@ -43,6 +43,15 @@ export function toErrorMessage(error: unknown) {
       return "Please enter a valid WhatsApp number.";
     }
     if (invalidFields.has("matchId")) return "Please choose a valid match.";
+    if (invalidFields.has("stakeMin") || invalidFields.has("stakeMax")) {
+      return "Enter challenge token amounts at or above the minimum shown, using no more than two decimal places.";
+    }
+    if (invalidFields.has("warningAcknowledged")) {
+      return "Please acknowledge the match rules before posting.";
+    }
+    if (invalidFields.has("format")) {
+      return "Please choose a supported team size.";
+    }
     return "Please check the information you entered and try again.";
   }
 

@@ -6,209 +6,34 @@ import {
   RANK_PAGE_SIZE,
   type PlayerRank,
 } from "@/lib/rank";
-import { MatchModel } from "@/models/match";
+import type { SeasonDoc } from "@/models/season";
 import { UserModel } from "@/models/user";
-import { MatchStatus, UserRole } from "@/types/enums";
+import { UserRole } from "@/types/enums";
 
 export type { PlayerRank };
 export { RANK_PAGE_SIZE };
 
-type AggregatedPlayer = {
-  _id: Types.ObjectId;
-  wins: number;
-  matches: number;
-  winRate: number;
-  displayName: string;
-  ign: string;
-};
+const numericCounter = (field: "wins" | "matchesPlayed") => ({
+  $convert: {
+    input: `$${field}`,
+    to: "long",
+    onError: 0,
+    onNull: 0,
+  },
+});
 
-function toPlayerRank(player: AggregatedPlayer): PlayerRank {
-  return {
-    userId: String(player._id),
-    displayName: player.displayName,
-    ign: player.ign?.trim() || player.displayName,
-    wins: player.wins,
-    matches: player.matches,
-    winRate: player.winRate,
-    rank: getRank(player.winRate).name,
-  };
-}
-
-/** Settled 1v1 match stats for a single player — no full-table scan. */
 async function getUserMatchStats(userId: string) {
-  const oid = new Types.ObjectId(userId);
-  const [row] = await MatchModel.aggregate<{ wins: number; matches: number }>([
+  const [row] = await UserModel.aggregate<{ wins: number; matches: number }>([
+    { $match: { _id: new Types.ObjectId(userId) } },
     {
-      $match: {
-        status: MatchStatus.SETTLED,
-        $or: [
-          { creatorId: oid },
-          { opponentCaptainId: oid },
-        ],
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        wins: {
-          $sum: {
-            $cond: [
-              {
-                $or: [
-                  {
-                    $and: [
-                      { $eq: ["$creatorId", oid] },
-                      { $eq: ["$winnerTeam", "A"] },
-                    ],
-                  },
-                  {
-                    $and: [
-                      { $eq: ["$opponentCaptainId", oid] },
-                      { $eq: ["$winnerTeam", "B"] },
-                    ],
-                  },
-                ],
-              },
-              1,
-              0,
-            ],
-          },
-        },
-        matches: { $sum: 1 },
+      $project: {
+        _id: 0,
+        wins: numericCounter("wins"),
+        matches: numericCounter("matchesPlayed"),
       },
     },
   ]);
   return row ?? { wins: 0, matches: 0 };
-}
-
-/**
- * Ranked players who have completed ≥1 settled 1v1.
- * Stats come from matches only — users with zero matches never appear.
- */
-async function aggregateRankedPlayers(skip: number, limit: number) {
-  return MatchModel.aggregate<AggregatedPlayer>([
-    { $match: { status: MatchStatus.SETTLED } },
-    {
-      $lookup: {
-        from: "matchparticipants",
-        localField: "_id",
-        foreignField: "matchId",
-        as: "roster",
-      },
-    },
-    {
-      $project: {
-        winnerTeam: 1,
-        participants: {
-          $filter: {
-            input: {
-              $setUnion: [
-                [{ id: "$creatorId", team: "A" }],
-                {
-                  $cond: [
-                    { $ifNull: ["$opponentCaptainId", false] },
-                    [{ id: "$opponentCaptainId", team: "B" }],
-                    [],
-                  ],
-                },
-                {
-                  $map: {
-                    input: { $ifNull: ["$roster", []] },
-                    as: "player",
-                    in: { id: "$$player.userId", team: "$$player.team" },
-                  },
-                },
-              ],
-            },
-            as: "player",
-            cond: { $ne: ["$$player.id", null] },
-          },
-        },
-      },
-    },
-    { $unwind: "$participants" },
-    {
-      $group: {
-        _id: { matchId: "$_id", userId: "$participants.id" },
-        team: { $first: "$participants.team" },
-        winnerTeam: { $first: "$winnerTeam" },
-      },
-    },
-    {
-      $group: {
-        _id: "$_id.userId",
-        wins: {
-          $sum: {
-            $cond: [{ $eq: ["$team", "$winnerTeam"] }, 1, 0],
-          },
-        },
-        matches: { $sum: 1 },
-      },
-    },
-    {
-      $lookup: {
-        from: "users",
-        localField: "_id",
-        foreignField: "_id",
-        as: "user",
-      },
-    },
-    { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
-    {
-      $match: {
-        _id: { $ne: null },
-        "user.role": { $ne: UserRole.PLATFORM },
-      },
-    },
-    {
-      $addFields: {
-        winRate: {
-          $round: [
-            { $multiply: [{ $divide: ["$wins", "$matches"] }, 100] },
-            0,
-          ],
-        },
-        displayName: { $ifNull: ["$user.displayName", "Player"] },
-        ign: {
-          $let: {
-            vars: {
-              trimmedIgn: {
-                $trim: { input: { $ifNull: ["$user.ign", ""] } },
-              },
-            },
-            in: {
-              $cond: [
-                { $ne: ["$$trimmedIgn", ""] },
-                "$$trimmedIgn",
-                { $ifNull: ["$user.displayName", "Player"] },
-              ],
-            },
-          },
-        },
-      },
-    },
-    {
-      $sort: {
-        winRate: -1,
-        wins: -1,
-        matches: -1,
-        ign: 1,
-        displayName: 1,
-        _id: 1,
-      },
-    },
-    { $skip: skip },
-    { $limit: limit },
-    {
-      $project: {
-        wins: 1,
-        matches: 1,
-        winRate: 1,
-        displayName: 1,
-        ign: 1,
-      },
-    },
-  ]);
 }
 
 export async function getPlayerRank(userId: string) {
@@ -231,7 +56,104 @@ export async function getPlayerRank(userId: string) {
   } satisfies PlayerRank;
 }
 
+type AggregatedPlayer = {
+  _id: Types.ObjectId;
+  wins: number;
+  losses: number;
+  matches: number;
+  winRate: number;
+  displayName: string;
+  ign: string;
+};
+
+function toPlayerRank(player: AggregatedPlayer): PlayerRank {
+  return {
+    userId: String(player._id),
+    displayName: player.displayName,
+    ign: player.ign?.trim() || player.displayName,
+    wins: player.wins,
+    losses: player.losses,
+    matches: player.matches,
+    winRate: player.winRate,
+    rank: getRank(player.winRate).name,
+  };
+}
+
+async function aggregateRankedPlayers(
+  skip: number,
+  limit: number,
+) {
+  return UserModel.aggregate<AggregatedPlayer>([
+    { $match: { role: { $ne: UserRole.PLATFORM } } },
+    {
+      $project: {
+        _id: 1,
+        wins: numericCounter("wins"),
+        matches: numericCounter("matchesPlayed"),
+        displayName: { $ifNull: ["$displayName", "Player"] },
+        ign: {
+          $let: {
+            vars: {
+              trimmedIgn: {
+                $trim: { input: { $ifNull: ["$ign", ""] } },
+              },
+            },
+            in: {
+              $cond: [
+                { $ne: ["$$trimmedIgn", ""] },
+                "$$trimmedIgn",
+                { $ifNull: ["$displayName", "Player"] },
+              ],
+            },
+          },
+        },
+      },
+    },
+    { $match: { wins: { $gte: 1 } } },
+    {
+      $addFields: {
+        losses: { $max: [{ $subtract: ["$matches", "$wins"] }, 0] },
+        winRate: {
+          $cond: [
+            { $gt: ["$matches", 0] },
+            {
+              $round: [
+                { $multiply: [{ $divide: ["$wins", "$matches"] }, 100] },
+                0,
+              ],
+            },
+            0,
+          ],
+        },
+      },
+    },
+    {
+      $sort: {
+        winRate: -1,
+        wins: -1,
+        matches: -1,
+        ign: 1,
+        displayName: 1,
+        _id: 1,
+      },
+    },
+    { $skip: skip },
+    { $limit: limit },
+    {
+      $project: {
+        wins: 1,
+        matches: 1,
+        winRate: 1,
+        losses: 1,
+        displayName: 1,
+        ign: 1,
+      },
+    },
+  ]);
+}
+
 export async function listGlobalRanks(
+  _season: Pick<SeasonDoc, "_id" | "startDate" | "endDate">,
   limit = RANK_PAGE_SIZE,
   offset = 0,
 ): Promise<{ players: PlayerRank[]; hasMore: boolean }> {

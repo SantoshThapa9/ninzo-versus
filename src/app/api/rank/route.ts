@@ -1,5 +1,6 @@
 import { RANK_PAGE_SIZE } from "@/lib/rank";
 import { listGlobalRanks } from "@/services/rank.service";
+import { getSeasonBySlug } from "@/services/season.service";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -10,6 +11,7 @@ export async function GET(request: Request) {
     return Response.json({ error: "Invalid pagination params" }, { status: 400 });
   }
 
-  const { players, hasMore } = await listGlobalRanks(limit, offset);
+  const season = await getSeasonBySlug(searchParams.get("season") ?? undefined);
+  const { players, hasMore } = await listGlobalRanks(season, limit, offset);
   return Response.json({ players, hasMore, offset, limit });
 }

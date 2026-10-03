@@ -14,6 +14,7 @@ const PrizeDistributionSchema = new Schema(
 const HostedEventSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
+    seasonId: { type: Schema.Types.ObjectId, ref: "Season" },
     eventDate: { type: Date, required: true },
     startTime: { type: String, required: true },
     registrationOpensAt: { type: Date, required: true },
@@ -37,6 +38,9 @@ const HostedEventSchema = new Schema(
 );
 
 HostedEventSchema.index({ status: 1, eventDate: 1 });
+HostedEventSchema.index({ seasonId: 1, status: 1, eventDate: -1 });
+// Drives the expired-occurrence scan without inspecting future/live events.
+HostedEventSchema.index({ status: 1, registrationClosesAt: 1 });
 
 export type HostedEventDoc = InferSchemaType<typeof HostedEventSchema> & {
   _id: Types.ObjectId;
@@ -49,6 +53,11 @@ const existingHostedEventModel = models.HostedEvent;
 if (existingHostedEventModel && !existingHostedEventModel.schema.path("winningPrizeCoins")) {
   existingHostedEventModel.schema.add({
     winningPrizeCoins: { type: Number, default: 0, min: 0 },
+  });
+}
+if (existingHostedEventModel && !existingHostedEventModel.schema.path("seasonId")) {
+  existingHostedEventModel.schema.add({
+    seasonId: { type: Schema.Types.ObjectId, ref: "Season" },
   });
 }
 

@@ -8,6 +8,7 @@ import { Crown, Medal } from "lucide-react";
 type RankingsListProps = {
   initialPlayers: PlayerRank[];
   initialHasMore: boolean;
+  seasonSlug: string;
 };
 
 const BOTTOM_THRESHOLD_PX = 80;
@@ -25,6 +26,7 @@ function isPageScrolledToEnd() {
 export function RankingsList({
   initialPlayers,
   initialHasMore,
+  seasonSlug,
 }: RankingsListProps) {
   const [players, setPlayers] = useState(initialPlayers);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -41,7 +43,11 @@ export function RankingsList({
     setError(null);
     try {
       const res = await fetch(
-        `/api/rank?offset=${offsetRef.current}&limit=${RANK_PAGE_SIZE}`,
+        `/api/rank?${new URLSearchParams({
+          season: seasonSlug,
+          offset: String(offsetRef.current),
+          limit: String(RANK_PAGE_SIZE),
+        })}`,
       );
       if (!res.ok) throw new Error("Failed to load more rankings");
       const data = (await res.json()) as {
@@ -62,7 +68,7 @@ export function RankingsList({
       loadingRef.current = false;
       setLoading(false);
     }
-  }, []);
+  }, [seasonSlug]);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -113,7 +119,7 @@ export function RankingsList({
                 {player.displayName}
               </p>
               <p className="text-xs text-[var(--muted)]">
-                {player.wins} wins · {player.matches} matches
+                {player.wins} wins · {player.losses} losses · {player.matches} matches
               </p>
             </div>
             <div className="text-right">

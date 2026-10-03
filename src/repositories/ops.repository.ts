@@ -80,6 +80,9 @@ export const resultRepository = {
   deleteManyForMatch(matchId: string) {
     return ResultSubmissionModel.deleteMany({ matchId });
   },
+  deleteManyByIds(ids: string[]) {
+    return ResultSubmissionModel.deleteMany({ _id: { $in: ids } });
+  },
 };
 
 export const evidenceAttemptRepository = {

@@ -16,6 +16,7 @@ export type PlayerRank = {
   displayName: string;
   ign: string;
   wins: number;
+  losses?: number;
   matches: number;
   winRate: number;
   rank: RankName;

@@ -34,14 +34,19 @@ function formatDate(value?: string) {
 function getExpiryDate(completedAt?: string) {
   if (!completedAt) return undefined;
   const completed = new Date(completedAt).getTime();
-  return Number.isNaN(completed) ? undefined : new Date(completed + 3 * 24 * 60 * 60 * 1000).toISOString();
+  return Number.isNaN(completed)
+    ? undefined
+    : new Date(completed + 3 * 24 * 60 * 60 * 1000).toISOString();
 }
 
 export function PreviousMatchesList({ matches }: { matches: PreviousMatch[] }) {
   if (matches.length === 0) {
     return (
       <Card>
-        <p className="text-sm text-[var(--muted)]">No recent completed matches yet. Matches leave history here for 3 days after completion.</p>
+        <p className="text-sm text-[var(--muted)]">
+          No recent completed matches yet. Matches leave history here for 3 days
+          after completion.
+        </p>
       </Card>
     );
   }
@@ -54,13 +59,22 @@ export function PreviousMatchesList({ matches }: { matches: PreviousMatch[] }) {
           <Link key={match._id} href={`/clash/${match._id}`}>
             <Card className="transition hover:border-[var(--accent)]">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-bold">{match.creatorIgn ?? "Player A"} vs {match.opponentIgn ?? "Player B"}</h2>
-                <Badge>{match.status === "disputed" ? "Admin review" : "Completed"}</Badge>
+                <h2 className="font-bold">
+                  {match.creatorIgn ?? "Player A"} vs{" "}
+                  {match.opponentIgn ?? "Player B"}
+                </h2>
+                <Badge>
+                  {match.status === "disputed" ? "Admin review" : "Completed"}
+                </Badge>
               </div>
               <div className="mt-2 grid gap-1 text-sm text-[var(--muted)]">
                 <p>Created Date: {formatDate(match.createdAt)}</p>
-                <p>Expiry Date: {formatDate(getExpiryDate(match.completedAt))}</p>
-                {winnerName ? <p className="text-[var(--accent-2)]">Winner: {winnerName}</p> : null}
+                <p>
+                  Expiry Date: {formatDate(getExpiryDate(match.completedAt))}
+                </p>
+                {winnerName ? (
+                  <p className="text-[var(--accent-2)]">Winner: {winnerName}</p>
+                ) : null}
               </div>
             </Card>
           </Link>

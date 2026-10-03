@@ -12,12 +12,13 @@ import { CoinTxnType, WithdrawalStatus } from "@/types/enums";
 import { WithdrawalModel } from "@/models/withdrawal";
 import { formatTokenActivity } from "@/lib/token-activity";
 import mongoose from "mongoose";
+import { upiIdSchema } from "@/services/upi.service";
 
 const requestSchema = z.object({
   coins: z.number().positive().refine(isValidTokenAmount, {
     message: "NV Tokens can have up to two decimal places.",
   }),
-  upiId: z.string().min(5),
+  upiId: upiIdSchema,
 });
 
 export async function requestWithdrawal(userId: string, raw: unknown) {
@@ -34,8 +35,21 @@ export async function requestWithdrawal(userId: string, raw: unknown) {
   return withTransaction(async (session) => {
     const user = await userRepository.findById(userId, session);
     if (!user) throw new AppError("User not found.", "NOT_FOUND", 404);
+    if (user.isAdultConfirmed !== true) {
+      throw new AppError(
+        "Confirm that you are 18 or older before using a UPI ID.",
+        "AGE_CONFIRMATION_REQUIRED",
+      );
+    }
     if (user.lastWithdrawalAt && user.lastWithdrawalAt >= todayUtcStart()) {
       throw new AppError("Only one reward redemption request is allowed per day.", "DAILY_LIMIT");
+    }
+
+    if (user.upiId !== input.upiId) {
+      throw new AppError(
+        "Use the UPI ID saved in your profile for reward redemption.",
+        "UPI_ID_MISMATCH",
+      );
     }
 
     const withdrawal = await withdrawalRepository.create(
@@ -59,9 +73,8 @@ export async function requestWithdrawal(userId: string, raw: unknown) {
       idempotencyKey: `withdrawal:${withdrawal._id}`,
       session,
     });
-
     user.lastWithdrawalAt = new Date();
-    user.upiId = input.upiId;
+    user.lastWithdrawalAt = new Date();
     await user.save({ session });
     return withdrawal;
   });

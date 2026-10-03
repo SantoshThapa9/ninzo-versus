@@ -2,7 +2,7 @@ export const ECONOMY_OVERRIDES = {
   nvCoinsPerRupee: 1,
   minDepositCoins: 10,
   minWithdrawalCoins: 10,
-  minMatchStakeCoins: 5,
+  minMatchStakeCoins: 0.01,
   depositFeePercent: 0,
   withdrawalFeePercent: 0,
   platformFeePercent: 5,
@@ -55,4 +55,6 @@ export const DEFAULT_PRIZE_SPLIT = {
   thirdPercent: 10,
 } as const;
 
-export const DAILY_FREE_REWARD_SCHEDULE = [0.05, 0.15, 0.3, 0.55, 0.85, 1.2, 1.9] as const;
+export const DAILY_FREE_REWARD_SCHEDULE = [
+  0.05, 0.15, 0.3, 0.55, 0.85, 1.2, 1.9,
+] as const;

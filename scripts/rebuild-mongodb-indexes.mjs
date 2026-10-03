@@ -28,8 +28,8 @@ if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is required.");
 const indexes = {
   users: [[{ email: 1 }, { unique: true }], [{ role: 1 }, {}]],
   playerprofiles: [[{ userId: 1 }, { unique: true }]],
-  matches: [[{ status: 1, createdAt: -1 }, {}], [{ creatorId: 1, status: 1 }, {}]],
-  matchparticipants: [[{ matchId: 1, userId: 1 }, { unique: true }]],
+  matches: [[{ status: 1, createdAt: -1 }, {}], [{ creatorId: 1, status: 1 }, {}], [{ seasonId: 1, status: 1, completedAt: -1 }, {}]],
+  matchparticipants: [[{ matchId: 1, userId: 1 }, { unique: true }], [{ userId: 1, matchId: 1 }, {}]],
   matchchatmessages: [[{ matchId: 1, createdAt: 1 }, {}], [{ expiresAt: 1 }, { expireAfterSeconds: 0 }]],
   cointransactions: [[{ idempotencyKey: 1 }, { unique: true }], [{ userId: 1, createdAt: -1 }, {}]],
   withdrawals: [[{ userId: 1, createdAt: -1 }, {}], [{ status: 1, createdAt: -1 }, {}]],
@@ -41,10 +41,12 @@ const indexes = {
   matchevidenceattempts: [[{ matchId: 1, userId: 1 }, {}]],
   auditlogs: [[{ createdAt: -1 }, {}]],
   disputes: [[{ status: 1, createdAt: -1 }, {}]],
-  hostedevents: [[{ status: 1, eventDate: 1 }, {}]],
+  hostedevents: [[{ status: 1, eventDate: 1 }, {}], [{ status: 1, registrationClosesAt: 1 }, {}], [{ seasonId: 1, status: 1, eventDate: -1 }, {}]],
+  seasons: [[{ slug: 1 }, { unique: true }], [{ startDate: -1 }, {}]],
   hostedteams: [[{ eventId: 1, captainId: 1 }, { unique: true }], [{ eventId: 1, slotNumber: 1 }, { unique: true }]],
   verifiedroomids: [[{ roomId: 1 }, { unique: true }]],
   aiconfigurations: [[{ key: 1 }, { unique: true }]],
+  scheduledjobruns: [[{ jobName: 1, day: 1 }, { unique: true }]],
 };
 
 const client = new MongoClient(process.env.MONGODB_URI);

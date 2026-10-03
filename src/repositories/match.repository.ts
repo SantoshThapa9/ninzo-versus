@@ -11,8 +11,17 @@ export const matchRepository = {
   findById(id: string, session?: Session) {
     return MatchModel.findById(id).session(session ?? null);
   },
+  hasOpenForUser(userId: string, session?: Session) {
+    return MatchModel.exists({
+      $or: [{ creatorId: userId }, { opponentCaptainId: userId }],
+      status: "open",
+    }).session(session ?? null);
+  },
   findByIdWithRoom(id: string) {
     return MatchModel.findById(id).select("+roomId +roomPassword");
+  },
+  updateById(id: string, update: Record<string, unknown>) {
+    return MatchModel.updateOne({ _id: id }, update).exec();
   },
   listOpen() {
     return MatchModel.find({ status: "open" }).sort({ createdAt: -1 }).lean();

@@ -36,6 +36,13 @@ export async function POST(request: Request) {
       if (session.user.role !== UserRole.ADMIN && String(ticket.userId) !== session.user.id) {
         throw new AppError("You can only attach screenshots to your own request.", "FORBIDDEN", 403);
       }
+      if (session.user.role !== UserRole.ADMIN && !ticket.allowUserImageUploads) {
+        throw new AppError(
+          "Support has not enabled screenshot uploads for this request.",
+          "SUPPORT_IMAGE_UPLOAD_DISABLED",
+          403,
+        );
+      }
     }
     const folder = purpose === "evidence" ? "matches" : "support";
     const uploaded = await uploadPrivateMedia(file, folder);

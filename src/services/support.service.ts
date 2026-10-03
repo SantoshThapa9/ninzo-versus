@@ -3,6 +3,7 @@ import { connectDb } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { supportRepository, disputeRepository } from "@/repositories/ops.repository";
 import { ReportType, SupportStatus, TicketSender } from "@/types/enums";
+import { notifySupportAdminReply } from "@/services/push-notification.service";
 
 const reportTypes = Object.values(ReportType) as [ReportType, ...ReportType[]];
 
@@ -64,6 +65,14 @@ export async function sendTicketMessage(userId: string, ticketId: string, body: 
   if (asAdmin) {
     ticket.status = SupportStatus.ADMIN_ACTIVE;
     await ticket.save();
+    // A reply is saved even if a browser's push subscription has expired.
+    void notifySupportAdminReply(String(ticket.userId), ticketId, body).catch(
+      (error) =>
+        console.error("[push] Failed to queue support reply notification.", {
+          ticketId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+    );
   }
   return message;
 }

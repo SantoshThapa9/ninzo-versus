@@ -6,6 +6,8 @@ import {
   ImagePlus,
   LoaderCircle,
   SendHorizontal,
+  BellOff,
+  Bell,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -56,8 +58,12 @@ export function MatchChat({
   const [uploading, setUploading] = useState(false);
   const [analyzingScreenshot, setAnalyzingScreenshot] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [roomIdRetryRequired, setRoomIdRetryRequired] = useState(false);
   const [respectWarning, setRespectWarning] = useState(false);
   const [failedUploadAttempts, setFailedUploadAttempts] = useState(0);
+  const [chatNotificationsMuted, setChatNotificationsMuted] = useState(false);
+  const [updatingNotificationMute, setUpdatingNotificationMute] =
+    useState(false);
   const [now, setNow] = useState(() => Date.now());
   const transcriptRef = useRef<HTMLDivElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
@@ -79,6 +85,7 @@ export function MatchChat({
         result?: "win" | "loss" | "hold";
         evidence?: Evidence[];
         failedUploadAttempts?: number;
+        chatNotificationsMuted?: boolean;
         error?: string;
       };
       if (!response.ok) return setStatus(data.error ?? "Unable to load chat.");
@@ -96,6 +103,7 @@ export function MatchChat({
       );
       setEvidence(data.evidence ?? []);
       setFailedUploadAttempts(data.failedUploadAttempts ?? 0);
+      setChatNotificationsMuted(Boolean(data.chatNotificationsMuted));
       setStatus("");
     } catch {
       setStatus("Unable to load chat.");
@@ -167,6 +175,24 @@ export function MatchChat({
       setSending(false);
     }
   }
+  async function toggleChatNotifications() {
+    if (updatingNotificationMute) return;
+    const muted = !chatNotificationsMuted;
+    setUpdatingNotificationMute(true);
+    try {
+      const response = await fetch(`/api/clash/${matchId}/chat`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ muted }),
+      });
+      if (!response.ok) throw new Error("Unable to update chat notifications.");
+      setChatNotificationsMuted(muted);
+    } catch {
+      setStatus("Unable to update chat notification settings.");
+    } finally {
+      setUpdatingNotificationMute(false);
+    }
+  }
   function selectScreenshot(file: File | undefined) {
     if (file && !file.type.startsWith("image/")) {
       setStatus("Please choose an image screenshot.");
@@ -224,6 +250,12 @@ export function MatchChat({
       if (typeof data.failedUploadAttempts === "number") {
         setFailedUploadAttempts(data.failedUploadAttempts);
       }
+      const roomIdMismatch = data.error === "Can't find detail, upload again.";
+      if (roomIdMismatch) {
+        setResult(undefined);
+        setStatus("");
+        setRoomIdRetryRequired(true);
+      }
       selectScreenshot(undefined);
       setPreviewOpen(false);
       if (screenshotInputRef.current) screenshotInputRef.current.value = "";
@@ -236,6 +268,7 @@ export function MatchChat({
     selectScreenshot(undefined);
     setPreviewOpen(false);
     if (screenshotInputRef.current) screenshotInputRef.current.value = "";
+    setRoomIdRetryRequired(false);
     if (data.result) {
       setResult(data.result);
       setStatus("");
@@ -267,6 +300,24 @@ export function MatchChat({
         >
           {expiresAt ? timeLeft : "Loading session…"}
         </span>
+      </div>
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+        <p className="text-xs text-[var(--muted)]">
+          {chatNotificationsMuted
+            ? "Opponent chat notifications are muted."
+            : "Opponent chat notifications are on."}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={updatingNotificationMute}
+          onClick={() => void toggleChatNotifications()}
+          aria-pressed={chatNotificationsMuted}
+        >
+          {chatNotificationsMuted ? <Bell size={15} /> : <BellOff size={15} />}
+          {chatNotificationsMuted ? "Unmute opponent" : "Mute opponent"}
+        </Button>
       </div>
       <div
         ref={transcriptRef}
@@ -326,7 +377,7 @@ export function MatchChat({
             </div>
           );
         })}
-        {closed ? (
+        {closed && !roomIdRetryRequired ? (
           <div className="space-y-3 border-t border-white/10 pt-3">
             {result && result !== "hold" ? (
               <div className="relative mb-3 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 p-3">
@@ -345,7 +396,7 @@ export function MatchChat({
             ) : (
               <p className="text-center text-sm font-medium text-[var(--accent-2)]">
                 {result === "hold"
-                  ? "⚠ Match on Hold. Conflicting screenshots detected. Admin will review."
+                  ? "⚠ Match on Hold. Conflicting screenshots detected."
                   : matchStatus === "cancelled"
                     ? "This match was disqualified after the 24-hour chat limit. Both players' NV Tokens have been returned."
                     : matchStatus === "analyzing"
@@ -472,15 +523,17 @@ export function MatchChat({
               </p>
             </>
           ) : null}
-          {matchStatus === "awaiting_evidence" && !canUpload ? (
+          {!roomIdRetryRequired &&
+          matchStatus === "awaiting_evidence" &&
+          !canUpload ? (
             <p className="px-1 text-sm text-[var(--accent-2)]">
               Your result screenshot is submitted. Waiting for the other player.
             </p>
           ) : null}
           {matchStatus === "disputed" ? (
             <p className="px-1 text-sm font-medium text-[var(--danger)]">
-              Screenshot verification needs admin review. Your final upload has
-              been saved.
+              Verification is currently on hold because your or the opponent’s
+              screenshot was unclear. This may take some time.
             </p>
           ) : null}
         </div>

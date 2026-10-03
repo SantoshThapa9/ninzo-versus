@@ -3,21 +3,34 @@ import { RankingsList } from "@/components/rank/rankings-list";
 import { RANKS } from "@/lib/rank";
 import { listGlobalRanks } from "@/services/rank.service";
 import { listCompletedEventResults } from "@/services/event.service";
+import { listSeasons } from "@/services/season.service";
 import { CalendarDays, Trophy } from "lucide-react";
 import Link from "next/link";
+import { SeasonSelector } from "@/components/rank/season-selector";
 
 type RankTab = "rankings" | "event-results";
 
 export default async function RankPage({ searchParams }: PageProps<"/rank">) {
+  const params = await searchParams;
   const tab =
-    (await searchParams).tab === "event-results"
+    params.tab === "event-results"
       ? "event-results"
       : ("rankings" satisfies RankTab);
+  const seasons = await listSeasons();
+  const season =
+    seasons.find(
+      (availableSeason) =>
+        availableSeason.slug ===
+        (typeof params.season === "string" ? params.season : undefined),
+    ) ?? seasons[0];
+  if (!season) throw new Error("No monthly seasons are available.");
   const [rankingPage, eventResults] = await Promise.all([
     tab === "rankings"
-      ? listGlobalRanks()
+      ? listGlobalRanks(season)
       : Promise.resolve({ players: [], hasMore: false }),
-    tab === "event-results" ? listCompletedEventResults() : Promise.resolve([]),
+    tab === "event-results"
+      ? listCompletedEventResults(season)
+      : Promise.resolve([]),
   ]);
   return (
     <div className="grid gap-5 pb-2">
@@ -30,9 +43,15 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
         </div>
         <h1 className="mt-1 text-2xl font-extrabold">Rank</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Ranks use wins and matches from settled 1v1 challenges only.
+          Ranks use your recorded 1v1 wins and matches.
         </p>
       </div>
+
+      <SeasonSelector
+        seasons={seasons.map(({ slug, name }) => ({ slug, name }))}
+        selectedSlug={season.slug}
+        tab={tab}
+      />
 
       <div
         role="tablist"
@@ -40,7 +59,7 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
         className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1 text-sm font-bold"
       >
         <Link
-          href="/rank"
+          href={`/rank?season=${season.slug}`}
           role="tab"
           aria-selected={tab === "rankings"}
           className={`rounded-lg px-3 py-2 text-center transition ${tab === "rankings" ? "bg-[var(--accent)] text-black" : "text-[var(--muted)] hover:text-white"}`}
@@ -48,7 +67,7 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
           1v1 rankings
         </Link>
         <Link
-          href="/rank?tab=event-results"
+          href={`/rank?season=${season.slug}&tab=event-results`}
           role="tab"
           aria-selected={tab === "event-results"}
           className={`rounded-lg px-3 py-2 text-center transition ${tab === "event-results" ? "bg-[var(--accent)] text-black" : "text-[var(--muted)] hover:text-white"}`}
@@ -117,11 +136,13 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
               <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold [&::-webkit-details-marker]:hidden">
                 <span>Rank levels</span>
 
-                <span className="text-xs text-[var(--muted)] transition-transform duration-200 group-open:rotate-180">
+                <p className="text-xs text-[var(--muted)] transition-transform duration-200 group-open:rotate-180">
                   ▼
-                </span>
+                </p>
               </summary>
-
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                {"Rank win rates decay when you stop competing."}
+              </p>
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
                 {RANKS.map((rank, index) => (
                   <div
@@ -145,8 +166,10 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
             </details>
           </Card>
           <RankingsList
+            key={season.slug}
             initialPlayers={rankingPage.players}
             initialHasMore={rankingPage.hasMore}
+            seasonSlug={season.slug}
           />
         </>
       )}

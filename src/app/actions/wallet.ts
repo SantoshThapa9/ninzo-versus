@@ -8,6 +8,7 @@ import { createDepositOrder } from "@/services/payment.service";
 import { requestWithdrawal, reviewWithdrawal } from "@/services/withdrawal.service";
 import { updatePlatformSettings } from "@/services/settings.service";
 import { savePlayerIdentity } from "@/services/player-profile.service";
+import { saveAge, savePayoutDetails } from "@/services/upi.service";
 import { claimDailyFreeReward } from "@/services/wallet.service";
 
 export async function createDepositAction(coins: number) {
@@ -67,7 +68,17 @@ export async function reviewWithdrawalAction(formData: FormData) {
   revalidatePath("/admin/withdrawals");
 }
 
-export async function saveProfileAction(_prev: { error?: string; ok?: boolean } | null, formData: FormData) {
+export type SaveProfileState = {
+  error?: string;
+  ok?: boolean;
+  message?: string;
+  age?: number;
+} | null;
+
+export async function saveProfileAction(
+  _prev: SaveProfileState,
+  formData: FormData,
+): Promise<SaveProfileState> {
   try {
     const session = await requireSession();
     await savePlayerIdentity(session.user.id, {
@@ -75,12 +86,24 @@ export async function saveProfileAction(_prev: { error?: string; ok?: boolean } 
       ign: String(formData.get("ign") ?? ""),
       uid: String(formData.get("uid") ?? ""),
     });
+    const ageResult = await saveAge(session.user.id, formData.get("age"));
+    const upiId = String(formData.get("upiId") ?? "").trim();
+    const phoneNumber = String(formData.get("phoneNumber") ?? "").trim();
+    if (upiId || phoneNumber) {
+      await savePayoutDetails(session.user.id, { upiId, phoneNumber });
+    }
     revalidatePath("/profile");
     revalidatePath("/");
     revalidatePath("/challenges");
     revalidatePath("/matches");
     revalidatePath("/rank");
-    return { ok: true };
+    return {
+      ok: true,
+      age: ageResult.age,
+      message: ageResult.isAdult
+        ? "Profile saved. You can now use your UPI ID."
+        : "Age saved. UPI is available only to users 18 or older.",
+    };
   } catch (error) {
     return { error: toErrorMessage(error) };
   }

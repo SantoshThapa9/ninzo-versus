@@ -34,7 +34,7 @@ export async function POST(
     const session = await auth();
     if (!session?.user?.id)
       return Response.json({ error: "Unauthorized" }, { status: 401 });
-    await rateLimit(`support:chat:${session.user.id}`, 10, 60);
+    await rateLimit(`support:chat:${session.user.id}`, 6, 60);
     const { id } = await ctx.params;
     const payload = (await request.json()) as { body?: string };
     const message = await sendTicketMessage(

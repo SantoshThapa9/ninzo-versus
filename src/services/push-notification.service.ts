@@ -79,3 +79,109 @@ export async function notifyChallengeAccepted(
     }),
   );
 }
+
+/** Sends a best-effort push for a new private-match chat message. */
+export async function notifyMatchChatMessage(
+  recipientId: string,
+  senderIgn: string,
+  matchId: string,
+  body: string,
+) {
+  const env = getEnv();
+  if (!env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) {
+    console.warn("[push] VAPID is not configured; chat push was skipped.");
+    return;
+  }
+  const vapidDetails = {
+    subject: env.VAPID_SUBJECT,
+    publicKey: env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    privateKey: env.VAPID_PRIVATE_KEY,
+  };
+  await connectDb();
+  const subscriptions = await PushSubscriptionModel.find({ userId: recipientId }).lean();
+  const payload = JSON.stringify({
+    title: `${senderIgn} sent a message`,
+    body: body.slice(0, 180),
+    url: `/clash/${matchId}`,
+    tag: `clash-chat-${matchId}`,
+    kind: "match_chat",
+  });
+
+  await Promise.all(
+    subscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(subscription as PushSubscription, payload, {
+          vapidDetails,
+          TTL: 60 * 60 * 24,
+          urgency: "high",
+          topic: `clash-chat-${matchId}`.slice(0, 32),
+        });
+      } catch (error) {
+        const statusCode =
+          typeof error === "object" && error !== null && "statusCode" in error
+            ? Number(error.statusCode)
+            : undefined;
+        if (statusCode === 404 || statusCode === 410) {
+          await PushSubscriptionModel.deleteOne({ _id: subscription._id });
+          return;
+        }
+        console.error("[push] Failed to send match chat notification.", {
+          matchId,
+          statusCode,
+        });
+      }
+    }),
+  );
+}
+
+/** Sends a best-effort push when support staff reply to a customer's ticket. */
+export async function notifySupportAdminReply(
+  recipientId: string,
+  ticketId: string,
+  body: string,
+) {
+  const env = getEnv();
+  if (!env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) {
+    console.warn("[push] VAPID is not configured; support reply push was skipped.");
+    return;
+  }
+  const vapidDetails = {
+    subject: env.VAPID_SUBJECT,
+    publicKey: env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    privateKey: env.VAPID_PRIVATE_KEY,
+  };
+  await connectDb();
+  const subscriptions = await PushSubscriptionModel.find({ userId: recipientId }).lean();
+  const payload = JSON.stringify({
+    title: "Ninzo Support replied",
+    body: body.slice(0, 180),
+    url: `/support/${ticketId}`,
+    tag: `support-reply-${ticketId}`,
+    kind: "support_reply",
+  });
+  await Promise.all(
+    subscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(subscription as PushSubscription, payload, {
+          vapidDetails,
+          TTL: 60 * 60 * 24,
+          urgency: "high",
+          topic: `support-${ticketId}`.slice(0, 32),
+        });
+      } catch (error) {
+        const statusCode =
+          typeof error === "object" && error !== null && "statusCode" in error
+            ? Number(error.statusCode)
+            : undefined;
+        if (statusCode === 404 || statusCode === 410) {
+          await PushSubscriptionModel.deleteOne({ _id: subscription._id });
+          return;
+        }
+        console.error("[push] Failed to send support reply notification.", {
+          ticketId,
+          statusCode,
+        });
+      }
+    }),
+  );
+}

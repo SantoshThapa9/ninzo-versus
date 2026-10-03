@@ -25,24 +25,32 @@ export default async function SupportPage() {
       <SupportChatbot />
 
       <p className="text-sm text-[var(--muted)]">
-        AI chat is private to this conversation and does not create a support ticket. To contact the support team, select Report an issue.
+        AI chat is private to this conversation and does not create a support
+        ticket. To contact the support team, select Report an issue.
       </p>
 
       <div>
         <h2 className="mb-2 text-lg font-bold">Recent tickets</h2>
         {tickets.length === 0 ? (
           <Card>
-            <p className="text-sm text-[var(--muted)]">No support tickets yet.</p>
+            <p className="text-sm text-[var(--muted)]">
+              No support tickets yet.
+            </p>
           </Card>
         ) : null}
         {tickets.map((ticket) => (
-          <Link key={String(ticket._id)} href={`/support/${String(ticket._id)}`}>
+          <Link
+            key={String(ticket._id)}
+            href={`/support/${String(ticket._id)}`}
+          >
             <Card>
               <div className="flex items-center justify-between">
                 <p className="font-semibold">{ticket.summary}</p>
                 <Badge>{ticket.status}</Badge>
               </div>
-              <p className="mt-1 text-xs text-[var(--muted)]">{ticket.category}</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                {ticket.category}
+              </p>
             </Card>
           </Link>
         ))}
