@@ -140,7 +140,7 @@ export async function claimDailyFreeReward(userId: string, date = new Date()) {
       }
 
       // Resolve the authenticated account from the database. Display name,
-      // IGN, and UID are profile data and never participate in eligibility.
+      // IGN is profile data and never participates in eligibility.
       const account = await userRepository.findById(userId, session);
       if (!account) throw new AppError("User not found.", "USER_NOT_FOUND", 404);
       const accountEmail = account.email.toLowerCase();

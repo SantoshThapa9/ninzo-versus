@@ -43,7 +43,6 @@ export default async function ClashDetailPage({
   const players = data.players as {
     userId: string;
     ign: string;
-    uid: string;
   }[];
   const isCreator = match.creatorId === session.user.id;
   const isParticipant =
@@ -51,9 +50,9 @@ export default async function ClashDetailPage({
   const creator = players.find((player) => player.userId === match.creatorId);
   const opponent = players.find((player) => player.userId !== match.creatorId);
   const playerLabel = (
-    player: { userId: string; ign: string; uid: string } | undefined,
+    player: { userId: string; ign: string } | undefined,
   ) =>
-    `${player?.userId === session.user.id ? "You" : (player?.ign ?? "Player")} (${player?.uid ?? "UID not set"})`;
+    player?.userId === session.user.id ? "You" : (player?.ign ?? "Player");
   return (
     <div className="mx-auto grid w-full max-w-2xl gap-4 pb-2">
       <ClashStatusSync isCreator={isCreator} status={match.status} />
@@ -149,7 +148,7 @@ export default async function ClashDetailPage({
               />
             </div>
             <p className="text-sm text-[var(--muted)]">
-              Your saved In Game Name and UID from your profile will be used
+              Your saved In Game Name from your profile will be used
               when you accept.
             </p>
             <label className="flex items-start gap-2 text-sm">

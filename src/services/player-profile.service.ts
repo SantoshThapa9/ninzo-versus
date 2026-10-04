@@ -16,7 +16,6 @@ const identitySchema = z.object({
     .trim()
     .min(2, "In Game Name must be at least 2 characters.")
     .max(20),
-  uid: z.string().trim().max(30),
 });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -29,7 +28,6 @@ export async function getCurrentUserIdentity(userId: string) {
 
   return {
     ign: user?.ign ?? profile?.ign ?? "",
-    uid: user?.uid ?? profile?.uid ?? "",
   };
 }
 
@@ -55,7 +53,6 @@ export async function getCurrentUserIdentities(userIds: string[]) {
         userId,
         {
           ign: user?.ign ?? profile?.ign ?? "",
-          uid: user?.uid ?? profile?.uid ?? "",
         },
       ];
     }),
@@ -96,13 +93,11 @@ export async function savePlayerIdentity(userId: string, raw: unknown) {
       const profile = await playerProfileRepository.create(
         userId,
         input.ign,
-        input.uid,
         session,
       );
       await userRepository.updateGameIdentity(
         userId,
         input.ign,
-        input.uid,
         session,
       );
       await applyDisplayNameIfChanged(userId, input.displayName, session);
@@ -110,13 +105,11 @@ export async function savePlayerIdentity(userId: string, raw: unknown) {
     }
 
     const previousIgn = existing.ign;
-    const previousUid = existing.uid ?? "";
-    if (previousIgn === input.ign && previousUid === input.uid) {
+    if (previousIgn === input.ign) {
       // Repair user documents created before identity mirroring was introduced.
       await userRepository.updateGameIdentity(
         userId,
         input.ign,
-        input.uid,
         session,
       );
       await applyDisplayNameIfChanged(userId, input.displayName, session);
@@ -126,13 +119,12 @@ export async function savePlayerIdentity(userId: string, raw: unknown) {
     const updated = await playerProfileRepository.updateIdentityIfAllowed(
       userId,
       input.ign,
-      input.uid,
       new Date(Date.now() - DAY_MS),
       session,
     );
     if (!updated) {
       throw new AppError(
-        "You can change your In Game Name and UID once every 24 hours.",
+        "You can change your In Game Name once every 24 hours.",
         "IDENTITY_CHANGE_LIMIT",
       );
     }
@@ -145,7 +137,6 @@ export async function savePlayerIdentity(userId: string, raw: unknown) {
     await userRepository.updateGameIdentity(
       userId,
       input.ign,
-      input.uid,
       session,
     );
     await applyDisplayNameIfChanged(userId, input.displayName, session);

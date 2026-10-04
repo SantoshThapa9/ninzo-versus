@@ -17,7 +17,6 @@ export async function createTicketAction(_prev: { error?: string } | null, formD
       summary: String(formData.get("summary") ?? ""),
       matchId: String(formData.get("matchId") ?? "") || undefined,
       whatsappNumber: String(formData.get("whatsappNumber") ?? "") || undefined,
-      freeFireUid: String(formData.get("freeFireUid") ?? "") || undefined,
       ign: String(formData.get("ign") ?? "") || undefined,
     });
     revalidatePath("/support");

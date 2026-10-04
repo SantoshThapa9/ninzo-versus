@@ -46,7 +46,7 @@ export const userRepository = {
   },
   findByIdLean(id: string) {
     return UserModel.findById(id)
-      .select("displayName email ign uid age upiId phoneNumber lastMatchPlayed")
+      .select("displayName email ign age upiId phoneNumber lastMatchPlayed")
       .lean();
   },
   findByEmail(email: string) {
@@ -59,7 +59,7 @@ export const userRepository = {
   },
   findIdentitiesByIds(ids: string[]) {
     return UserModel.find({ _id: { $in: ids } })
-      .select("_id ign uid")
+      .select("_id ign")
       .maxTimeMS(5_000)
       .lean();
   },
@@ -159,10 +159,10 @@ export const userRepository = {
       }
     }
   },
-  updateGameIdentity(id: string, ign: string, uid: string, session?: Session) {
+  updateGameIdentity(id: string, ign: string, session?: Session) {
     return UserModel.findByIdAndUpdate(
       id,
-      { $set: { ign, uid } },
+      { $set: { ign } },
       { returnDocument: "after", session },
     );
   },

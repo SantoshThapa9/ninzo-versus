@@ -71,14 +71,14 @@ export default async function NewClashPage() {
           />
         </div>
         <p className="text-sm text-[var(--muted)]">
-          Your saved In Game Name and UID from your profile will be used for
-          this match.
+          Your saved In Game Name from your profile will be used for this match.
         </p>
         <div className="space-y-2 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" name="onlyHeadshots" className="mt-0.5" />
             Only headshots
           </label>
+
           <label className="flex items-center gap-2">
             <input
               type="checkbox"

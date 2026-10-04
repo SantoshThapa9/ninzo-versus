@@ -84,7 +84,6 @@ export async function saveProfileAction(
     await savePlayerIdentity(session.user.id, {
       displayName: String(formData.get("displayName") ?? ""),
       ign: String(formData.get("ign") ?? ""),
-      uid: String(formData.get("uid") ?? ""),
     });
     updateTag("public-open-matches");
     updateTag("global-rankings");

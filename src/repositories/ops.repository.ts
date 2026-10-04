@@ -17,7 +17,6 @@ export const supportRepository = {
     category: ReportType;
     summary: string;
     matchId?: string;
-    freeFireUid?: string;
     ign?: string;
     whatsappNumber?: string;
   }) {

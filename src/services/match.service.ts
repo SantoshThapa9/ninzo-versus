@@ -102,7 +102,7 @@ export async function createClashMatch(userId: string, raw: unknown) {
   const currentIdentity = await getCurrentUserIdentity(userId);
   if (!currentIdentity.ign)
     throw new AppError(
-      "Save your In Game Name and Free Fire UID in your profile before posting a match.",
+      "Save your In Game Name in your profile before posting a match.",
       "PROFILE_REQUIRED",
     );
 
@@ -186,7 +186,7 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
   const currentIdentity = await getCurrentUserIdentity(userId);
   if (!currentIdentity.ign)
     throw new AppError(
-      "Save your In Game Name and Free Fire UID in your profile before accepting a match.",
+      "Save your In Game Name in your profile before accepting a match.",
       "PROFILE_REQUIRED",
     );
 
@@ -1107,17 +1107,17 @@ export async function adminSettleMatch(
       roundTokens(Math.floor((winnerPayout * 100) / 2) / 100),
     ];
 
-    for (const [index, uid] of participantIds.entries()) {
+    for (const [index, participantId] of participantIds.entries()) {
       const drawPayout = winnerId ? 0 : drawPayouts[index];
       await applyLedger({
-        userId: uid,
+        userId: participantId,
         type: CoinTxnType.STAKE_SETTLE,
         amount: drawPayout,
         availableDelta: drawPayout,
         lockedDelta: -stake,
         referenceType: "Match",
         referenceId: matchId,
-        idempotencyKey: `stake-unlock:${matchId}:${uid}`,
+        idempotencyKey: `stake-unlock:${matchId}:${participantId}`,
         session,
       });
     }
@@ -1531,11 +1531,6 @@ export async function getMatchForUser(
         : (identityByUserId.get(String(participant.userId))?.ign ??
           participant.ign ??
           "Player"),
-      uid: isHistorical
-        ? (participant.uid ?? "UID not set")
-        : (identityByUserId.get(String(participant.userId))?.uid ??
-          participant.uid ??
-          "UID not set"),
     })),
     evidence: isParticipant || isAdmin ? evidence : [],
     settings,

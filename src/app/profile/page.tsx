@@ -30,7 +30,6 @@ export default async function ProfilePage() {
   // The user document is the source shown in the profile form. The legacy
   // PlayerProfile values remain as a fallback for accounts not yet backfilled.
   const ign = user?.ign ?? profile?.ign ?? "";
-  const uid = user?.uid ?? profile?.uid ?? "";
   const lastMatchPlayed = normalizeLastMatchPlayed(user?.lastMatchPlayed);
   return (
     <div className="grid gap-4">
@@ -43,10 +42,7 @@ export default async function ProfilePage() {
             session?.user?.email ??
             "Sign in to save your game details."}
         </p>
-        {/* <p className="mb-4 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-sm text-[var(--muted)]">
-          Display name and age can each be changed once every 24 hours. In Game
-          Name and UID share a 24-hour limit, as do UPI ID and phone number.
-        </p> */}
+
         <details className="mt-2 mb-2 rounded-lg border border-white/10 bg-white/[0.03] text-sm">
           <summary className="flex cursor-pointer items-center justify-between px-3 py-2.5 text-muted transition-colors hover:text-foreground">
             <span className="flex items-center gap-2">
@@ -75,7 +71,6 @@ export default async function ProfilePage() {
             key={`profile-age-${user?.age ?? "unset"}`}
             displayName={user?.displayName ?? ""}
             ign={ign}
-            uid={uid}
             age={user?.age ?? null}
             upiId={user?.upiId ?? ""}
             phoneNumber={user?.phoneNumber ?? ""}
@@ -98,15 +93,6 @@ export default async function ProfilePage() {
                   disabled
                   placeholder="Your Free Fire name"
                   data-tour="ign"
-                />
-              </div>
-              <div>
-                <Label htmlFor="uid">Free Fire UID</Label>
-                <Input
-                  id="uid"
-                  disabled
-                  placeholder="Your Free Fire UID"
-                  data-tour="uid"
                 />
               </div>
             </div>

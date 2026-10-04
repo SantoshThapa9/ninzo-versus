@@ -37,13 +37,13 @@ try {
   const operations = [];
   let scanned = 0;
 
-  for await (const profile of profiles.find({}, { projection: { userId: 1, ign: 1, uid: 1 } })) {
+  for await (const profile of profiles.find({}, { projection: { userId: 1, ign: 1 } })) {
     scanned += 1;
     if (!profile.userId || !profile.ign) continue;
     operations.push({
       updateOne: {
         filter: { _id: profile.userId },
-        update: { $set: { ign: profile.ign, uid: profile.uid ?? "" } },
+        update: { $set: { ign: profile.ign } },
       },
     });
   }

@@ -57,17 +57,12 @@ export function AppTour() {
 
     const steps: Record<string, DriveStep[]> = {
       profile: [
-        step(
-          "[data-tour='ign']",
-          "Set your In Game Name",
-          "Use the exact name shown in Free Fire so opponents can find you.",
-        ),
         {
-          element: "[data-tour='uid']",
+          element: "[data-tour='ign']",
           popover: {
-            title: "Save your game details",
+            title: "Set your In Game Name",
             description:
-              "Save your display name, In Game Name, and Free Fire UID after signing in. You can update each once every 24 hours.",
+              "Use the name shown in Free Fire so opponents can find you.",
             doneBtnText: "Sign in to save",
             onDoneClick: () => {
               finish();

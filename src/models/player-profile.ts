@@ -4,8 +4,7 @@ const PlayerProfileSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
     ign: { type: String, required: true, trim: true },
-    uid: { type: String, trim: true },
-    // This timestamp is only changed when either in-game identity field changes.
+    // This timestamp is only changed when the in-game name changes.
     identityUpdatedAt: { type: Date },
   },
   { timestamps: true },

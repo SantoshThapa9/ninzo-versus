@@ -12,7 +12,6 @@ const createSchema = z.object({
   summary: z.string().min(8),
   matchId: z.string().optional(),
   whatsappNumber: z.string().min(6).optional(),
-  freeFireUid: z.string().optional(),
   ign: z.string().optional(),
 });
 
@@ -34,7 +33,6 @@ export async function openTicket(userId: string, raw: unknown) {
       matchId: input.matchId,
       reporterId: userId,
       type: input.category,
-      freeFireUid: input.freeFireUid,
       ign: input.ign,
       description: input.summary,
       ticketId: ticket._id,

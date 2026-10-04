@@ -13,10 +13,9 @@ const UserSchema = new Schema(
     passwordHash: { type: String, required: true },
     displayName: { type: String, required: true, trim: true },
     displayNameUpdatedAt: { type: Date },
-    // Mirrored from PlayerProfile so the user's in-game identity is available
+    // Mirrored from PlayerProfile so the user's in-game name is available
     // directly on the user document as well.
     ign: { type: String, trim: true },
-    uid: { type: String, trim: true },
     role: { type: String, enum: Object.values(UserRole), default: UserRole.USER },
     status: { type: String, enum: Object.values(UserStatus), default: UserStatus.ACTIVE },
     availableCoins: { type: Number, default: 0, min: 0 },

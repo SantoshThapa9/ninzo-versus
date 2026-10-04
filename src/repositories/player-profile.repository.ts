@@ -14,22 +14,22 @@ export const playerProfileRepository = {
   },
   findIdentitiesByUserIds(userIds: string[]) {
     return PlayerProfileModel.find({ userId: { $in: userIds } })
-      .select("userId ign uid")
+      .select("userId ign")
       .maxTimeMS(5_000)
       .lean();
   },
-  upsert(userId: string, ign: string, uid?: string, session?: Session) {
+  upsert(userId: string, ign: string, session?: Session) {
     return PlayerProfileModel.findOneAndUpdate(
       { userId },
-      { $set: { ign, ...(uid?.trim() ? { uid: uid.trim() } : {}) } },
+      { $set: { ign } },
       { new: true, upsert: true, session },
     );
   },
-  create(userId: string, ign: string, uid: string, session?: Session) {
-    return PlayerProfileModel.create([{ userId, ign, uid, identityUpdatedAt: new Date() }], { session })
+  create(userId: string, ign: string, session?: Session) {
+    return PlayerProfileModel.create([{ userId, ign, identityUpdatedAt: new Date() }], { session })
       .then((docs) => docs[0]);
   },
-  updateIdentityIfAllowed(userId: string, ign: string, uid: string, cutoff: Date, session?: Session) {
+  updateIdentityIfAllowed(userId: string, ign: string, cutoff: Date, session?: Session) {
     return PlayerProfileModel.findOneAndUpdate(
       {
         userId,
@@ -39,7 +39,7 @@ export const playerProfileRepository = {
           { identityUpdatedAt: { $lte: cutoff } },
         ],
       },
-      { $set: { ign, uid, identityUpdatedAt: new Date() } },
+      { $set: { ign, identityUpdatedAt: new Date() } },
       { new: true, session },
     );
   },

@@ -59,7 +59,6 @@ export default async function AdminSupportTicketPage({ params }: PageProps<"/adm
           <div><dt className="text-[var(--muted)]">Name</dt><dd>{reporter?.displayName ?? "Unknown user"}</dd></div>
           <div><dt className="text-[var(--muted)]">Account ID</dt><dd className="break-all font-mono text-xs">{reporterId}</dd></div>
           <div><dt className="text-[var(--muted)]">In-game name</dt><dd>{identity.ign || "Not provided"}</dd></div>
-          <div><dt className="text-[var(--muted)]">Free Fire UID</dt><dd>{identity.uid || "Not provided"}</dd></div>
         </dl>
       </Card>
       <section className="grid gap-2" aria-label="Recent game history">

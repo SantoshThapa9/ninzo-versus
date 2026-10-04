@@ -7,7 +7,6 @@ const DisputeSchema = new Schema(
     eventId: { type: Schema.Types.ObjectId, ref: "HostedEvent" },
     reporterId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     type: { type: String, enum: Object.values(ReportType), required: true },
-    freeFireUid: { type: String, trim: true },
     ign: { type: String, trim: true },
     description: { type: String, required: true },
     status: { type: String, default: "open" },

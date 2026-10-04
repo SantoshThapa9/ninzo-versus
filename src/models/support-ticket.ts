@@ -11,7 +11,6 @@ const SupportTicketSchema = new Schema(
     category: { type: String, enum: categoryValues, required: true },
     status: { type: String, enum: Object.values(SupportStatus), default: SupportStatus.AI_ACTIVE },
     matchId: { type: String, trim: true },
-    freeFireUid: { type: String, trim: true },
     ign: { type: String, trim: true },
     whatsappNumber: { type: String, trim: true },
     summary: { type: String, required: true },

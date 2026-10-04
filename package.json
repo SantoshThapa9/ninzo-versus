@@ -59,6 +59,6 @@
     "postcss": "^8.5.28",
     "sass": "^1.104.1",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5"
+    "typescript": "5.9.3"
   }
 }
