@@ -26,7 +26,7 @@ export function AdminLink() {
   }, []);
 
   return isAdmin ? (
-    <Link href="/admin" className={styles.admin}>
+    <Link href="/admin" prefetch={false} className={styles.admin}>
       Admin
     </Link>
   ) : null;

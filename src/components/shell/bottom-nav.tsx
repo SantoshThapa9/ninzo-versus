@@ -33,6 +33,7 @@ export function BottomNav() {
           <Link
             key={item.href}
             href={item.href}
+            prefetch={false}
             data-tour={item.href === "/" ? "clash-nav" : undefined}
             className={`${styles.item} ${active ? styles.active : ""}`}
           >

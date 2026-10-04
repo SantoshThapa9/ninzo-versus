@@ -9,11 +9,11 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     <div className={styles.shell}>
       <AppTour />
       <header className={styles.header}>
-        <Link href="/" className={styles.brand}>
+        <Link href="/" prefetch={false} className={styles.brand}>
           NINZO VERSUS
         </Link>
         <nav className={styles.meta} aria-label="Utility navigation">
-          <Link href="/competition-policy" className={styles.admin}>
+          <Link href="/competition-policy" prefetch={false} className={styles.admin}>
             Rules
           </Link>
           <AdminLink />

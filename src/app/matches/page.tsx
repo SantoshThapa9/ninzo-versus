@@ -96,7 +96,7 @@ export default async function MatchesPage({
             const active = filter.key === selected;
             const href = `/matches?filter=${filter.key}`;
             return (
-              <Link key={filter.key} href={href}>
+              <Link key={filter.key} href={href} prefetch={false}>
                 <Badge
                   className={
                     active

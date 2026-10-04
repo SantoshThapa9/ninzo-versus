@@ -62,6 +62,7 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
       >
         <Link
           href={`/rank?season=${season.slug}`}
+          prefetch={false}
           role="tab"
           aria-selected={tab === "rankings"}
           className={`rounded-lg px-3 py-2 text-center transition ${tab === "rankings" ? "bg-[var(--accent)] text-black" : "text-[var(--muted)] hover:text-white"}`}
@@ -70,6 +71,7 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
         </Link>
         <Link
           href={`/rank?season=${season.slug}&tab=event-results`}
+          prefetch={false}
           role="tab"
           aria-selected={tab === "event-results"}
           className={`rounded-lg px-3 py-2 text-center transition ${tab === "event-results" ? "bg-[var(--accent)] text-black" : "text-[var(--muted)] hover:text-white"}`}
