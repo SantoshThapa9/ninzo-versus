@@ -35,10 +35,10 @@ export async function requestWithdrawal(userId: string, raw: unknown) {
   return withTransaction(async (session) => {
     const user = await userRepository.findById(userId, session);
     if (!user) throw new AppError("User not found.", "NOT_FOUND", 404);
-    if (user.isAdultConfirmed !== true) {
+    if (user.age === undefined || user.age < 18) {
       throw new AppError(
-        "Confirm that you are 18 or older before using a UPI ID.",
-        "AGE_CONFIRMATION_REQUIRED",
+        "UPI withdrawals are available only to users 18 or older.",
+        "AGE_REQUIREMENT",
       );
     }
     if (user.lastWithdrawalAt && user.lastWithdrawalAt >= todayUtcStart()) {

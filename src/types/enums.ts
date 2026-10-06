@@ -43,6 +43,9 @@ export const EventFormat = {
 } as const;
 export type EventFormat = (typeof EventFormat)[keyof typeof EventFormat];
 
+export const EVENT_ROUNDS = [7, 9, 11, 13, 15] as const;
+export type EventRounds = (typeof EVENT_ROUNDS)[number];
+
 export const CoinTxnType = {
   DEPOSIT: "deposit",
   STAKE_LOCK: "stake_lock",

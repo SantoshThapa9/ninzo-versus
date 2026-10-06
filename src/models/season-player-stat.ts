@@ -6,16 +6,10 @@ const SeasonPlayerStatSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     seasonId: { type: Schema.Types.ObjectId, ref: "Season", required: true },
     matchesPlayed: { type: Number, required: true, default: 0, min: 0 },
-    settledMatchesPlayed: { type: Number, required: true, default: 0, min: 0 },
-    inactivityMatchesPlayed: { type: Number, required: true, default: 0, min: 0 },
     wins: { type: Number, required: true, default: 0, min: 0 },
     displayName: { type: String },
     ign: { type: String },
     legacySnapshot: { type: Boolean, default: false },
-    dailyMatchesPlayedIncrementDay: {
-      type: String,
-      match: /^\d{4}-\d{2}-\d{2}$/,
-    },
   },
   { timestamps: true },
 );
@@ -43,3 +37,6 @@ if (!SeasonPlayerStatModel.schema.path("displayName")) {
 if (!SeasonPlayerStatModel.schema.path("ign")) {
   SeasonPlayerStatModel.schema.add({ ign: { type: String } });
 }
+SeasonPlayerStatModel.schema.remove("settledMatchesPlayed");
+SeasonPlayerStatModel.schema.remove("inactivityMatchesPlayed");
+SeasonPlayerStatModel.schema.remove("dailyMatchesPlayedIncrementDay");

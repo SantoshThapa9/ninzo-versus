@@ -80,10 +80,6 @@ export async function applyLedger(input: LedgerInput) {
   const existing = await ledgerRepository.findByIdempotency(input.idempotencyKey, input.session);
   if (existing) return existing;
 
-  await userRepository.normalizeLegacyLastMatchPlayed(
-    input.userId,
-    input.session,
-  );
   const user = await userRepository.findById(input.userId, input.session);
   if (!user) throw new AppError("User not found.", "USER_NOT_FOUND", 404);
 

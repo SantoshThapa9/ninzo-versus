@@ -10,8 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getPlayerRank } from "@/services/rank.service";
 import { getRank } from "@/lib/rank";
-import { normalizeLastMatchPlayed } from "@/lib/last-match-played";
-import { Medal } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { NotificationToggle } from "@/components/profile/notification-toggle";
 
@@ -30,7 +29,6 @@ export default async function ProfilePage() {
   // The user document is the source shown in the profile form. The legacy
   // PlayerProfile values remain as a fallback for accounts not yet backfilled.
   const ign = user?.ign ?? profile?.ign ?? "";
-  const lastMatchPlayed = normalizeLastMatchPlayed(user?.lastMatchPlayed);
   return (
     <div className="grid gap-4">
       <Card>
@@ -105,54 +103,46 @@ export default async function ProfilePage() {
         )}
         {userId ? <NotificationToggle /> : null}
       </Card>
-      {playerRank
+      {/* {playerRank
         ? (() => {
-            const rank = getRank(playerRank.winRate);
+            const rank = getRank(playerRank.rankScore);
             return (
-              <Card className="border-[var(--accent)]/25">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--muted)]">
+              <Card className="border-[var(--accent)]/25 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-bold uppercase leading-tight text-[var(--muted)]">
                       Current season rank
                     </p>
+
                     <p
-                      className={`mt-1 flex items-center gap-2 text-xl font-extrabold ${rank.className}`}
+                      className={`mt-2 flex items-center gap-1.5 text-lg font-extrabold ${rank.className}`}
                     >
-                      <Medal size={20} />
+                      <Image
+                        src={rank.image}
+                        alt=""
+                        width={24}
+                        height={24}
+                        className="size-6 shrink-0 object-contain"
+                      />
                       {playerRank.rank}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-extrabold">
-                      {playerRank.winRate}%
+
+                  <div className="shrink-0 text-right">
+                    <p className="text-xl font-extrabold leading-tight mb-1">
+                      {playerRank.rankScore}
                     </p>
-                    <p className="text-xs text-[var(--muted)]">
-                      {playerRank.wins} wins / {playerRank.matches} matches
+
+                    <p className="text-[11px] leading-tight text-[var(--muted)]">
+                      Rank Score · {playerRank.wins}W / {playerRank.losses}L
                     </p>
                   </div>
                 </div>
-                <p className="mt-3 text-xs text-[var(--muted)]">
-                  Last match played:{" "}
-                  {lastMatchPlayed
-                    ? lastMatchPlayed.toLocaleString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                        timeZone: "Asia/Kolkata",
-                      })
-                    : "No last match date recorded"}
-                </p>
-                <p className="mt-2 text-xs text-[var(--muted)]">
-                  {
-                    "Inactivity for a full day adds 1 default decay match, lowering your win rate. Play at least one match daily to prevent this."
-                  }
-                </p>
               </Card>
             );
           })()
-        : null}
+        : null} */}
+
       {userId ? (
         <form action={logoutAction}>
           <Button type="submit" variant="secondary" size="full">

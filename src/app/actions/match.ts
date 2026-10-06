@@ -36,6 +36,7 @@ export async function createMatchAction(
 
     const match = await createClashMatch(session.user.id, {
       format: Number(formData.get("format")),
+      rounds: Number(formData.get("rounds")),
       stakeMin: Number(formData.get("stakeMin")),
       stakeMax: Number(formData.get("stakeMax")),
       rules,

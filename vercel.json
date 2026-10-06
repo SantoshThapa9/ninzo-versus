@@ -5,12 +5,8 @@
       "schedule": "0 3 * * *"
     },
     {
-      "path": "/api/cron/daily-match-stats",
-      "schedule": "0 0 * * *"
-    },
-    {
       "path": "/api/cron/snapshot-rankings",
-      "schedule": "59 23 28-31 * *"
+      "schedule": "0 * 1 * *"
     }
   ]
 }

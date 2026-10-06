@@ -47,7 +47,6 @@ const indexes = {
   hostedteams: [[{ eventId: 1, captainId: 1 }, { unique: true }], [{ eventId: 1, slotNumber: 1 }, { unique: true }]],
   verifiedroomids: [[{ roomId: 1 }, { unique: true }]],
   aiconfigurations: [[{ key: 1 }, { unique: true }]],
-  scheduledjobruns: [[{ jobName: 1, day: 1 }, { unique: true }]],
 };
 
 const client = new MongoClient(process.env.MONGODB_URI);

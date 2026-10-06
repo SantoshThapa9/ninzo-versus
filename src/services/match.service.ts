@@ -25,7 +25,7 @@ import {
   resultRepository,
   verifiedRoomIdRepository,
 } from "@/repositories/ops.repository";
-import { CoinTxnType, EvidenceKind, MatchStatus } from "@/types/enums";
+import { CoinTxnType, EVENT_ROUNDS, EvidenceKind, MatchStatus } from "@/types/enums";
 import {
   analyzeMatchScreenshot,
   extractedChallengePlayersMatch,
@@ -48,6 +48,10 @@ const createMatchSchema = z.object({
       //curently only solo focus
       // CLASH_DEFAULTS.teamSizes.includes(n as 1 | 2 | 3 | 4 | 5 | 6),
     ),
+  rounds: z.number().int().refine(
+    (rounds) => EVENT_ROUNDS.includes(rounds as (typeof EVENT_ROUNDS)[number]),
+    { message: "Choose a valid round count." },
+  ),
   stakeMin: z
     .number()
     .min(ECONOMY_DEFAULTS.minMatchStakeCoins)
@@ -129,6 +133,7 @@ export async function createClashMatch(userId: string, raw: unknown) {
         seasonId: season._id,
         creatorId: user._id,
         creatorIgn: currentIdentity.ign,
+        rounds: input.rounds,
         rules: input.rules,
         stakeMin: input.stakeMin,
         stakeMax: input.stakeMax,
@@ -1082,11 +1087,6 @@ export async function adminSettleMatch(
       String(match.creatorId),
       String(match.opponentCaptainId),
     ];
-    // A draw chosen while resolving an admin hold voids the result rather than
-    // recording it as a played match. Keep ordinary (non-disputed) draws in
-    // the ranked statistics.
-    const isAdminReviewDraw =
-      match.status === MatchStatus.DISPUTED && winnerTeam === "DRAW";
     const winnerId =
       winnerTeam === "A"
         ? participantIds[0]
@@ -1159,14 +1159,11 @@ export async function adminSettleMatch(
     match.completedAt = completedAt;
     match.seasonId = season._id;
     await match.save({ session });
-    // Stats are derived from the server-side settlement decision. An ordinary
-    // draw increments matchesPlayed and activity without awarding a win, but a
-    // draw resolving an admin-review hold does not count as a played match.
-    if (!isAdminReviewDraw) {
+    // Only a decisive result counts as a played match in the rankings.
+    if (winnerId) {
       await userRepository.recordSettledMatchResult(
         [participantIds[0], participantIds[1]],
         winnerId,
-        completedAt,
         season._id,
         session,
       );
@@ -1191,7 +1188,7 @@ export async function adminSettleMatch(
         winnerTeam,
         winnerId: winnerId ?? null,
         resolution: winnerId ? "winner" : "draw",
-        countsAsPlayedMatch: !isAdminReviewDraw,
+        countsAsPlayedMatch: Boolean(winnerId),
         drawPayouts: winnerId ? undefined : drawPayouts,
         platformFeeAmount,
       },
@@ -1217,6 +1214,7 @@ const getCachedOpenMatches = unstable_cache(
           match.creatorIgn ||
           "Player 1",
         format: match.format,
+        rounds: match.rounds ?? 7,
         stakeMin: match.stakeMin,
         stakeMax: match.stakeMax,
         headshot: /only headshots:\s*yes/i.test(rules) ? "Yes" : "No",

@@ -4,10 +4,9 @@ import { connectDb } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { userRepository } from "@/repositories/user.repository";
 
-const PAYOUT_DETAILS_LOCK_MS = 24 * 60 * 60 * 1000;
-const AGE_CHANGE_LOCK_MS = 24 * 60 * 60 * 1000;
+const CHANGE_LOCK_MS = 24 * 60 * 60 * 1000;
 
-const ageSchema = z
+export const ageSchema = z
   .string()
   .trim()
   .regex(/^\d{1,3}$/)
@@ -35,28 +34,30 @@ export async function saveAge(userId: string, rawAge: unknown) {
   await connectDb();
   const existing = await userRepository.findById(userId);
   if (!existing) throw new AppError("User not found.", "NOT_FOUND", 404);
-  const unchanged = existing.age === parsedAge.data;
-  const updated = unchanged
-    ? await userRepository.updateAgeWithoutChange(userId, parsedAge.data)
-    : await userRepository.updateAgeIfAllowed(
-        userId,
-        parsedAge.data,
-        new Date(Date.now() - AGE_CHANGE_LOCK_MS),
-      );
-  if (!updated) {
-    if (!unchanged) {
-      throw new AppError(
-        "Age can be changed once every 24 hours.",
-        "AGE_CHANGE_LIMIT",
-      );
-    }
+  if (existing.age === parsedAge.data) return { age: parsedAge.data };
+  if (
+    existing.updatedAt &&
+    existing.updatedAt.getTime() > Date.now() - CHANGE_LOCK_MS
+  ) {
     throw new AppError(
-      "Profile changed while saving. Please try again.",
-      "PROFILE_SAVE_CONFLICT",
+      "Profile details can be changed once every 24 hours.",
+      "PROFILE_CHANGE_LIMIT",
     );
   }
 
-  return { age: parsedAge.data, isAdult: parsedAge.data >= 18 };
+  const updated = await userRepository.updateAgeIfAllowed(
+    userId,
+    parsedAge.data,
+    new Date(Date.now() - CHANGE_LOCK_MS),
+  );
+  if (!updated) {
+    throw new AppError(
+      "Age can be changed once every 24 hours.",
+      "AGE_CHANGE_LIMIT",
+    );
+  }
+
+  return { age: parsedAge.data };
 }
 
 export async function savePayoutDetails(
@@ -76,30 +77,39 @@ export async function savePayoutDetails(
   await connectDb();
   const existing = await userRepository.findById(userId, session);
   if (!existing) throw new AppError("User not found.", "NOT_FOUND", 404);
+  if (existing.age === undefined || existing.age < 18) {
+    throw new AppError(
+      "UPI details are available only to users 18 or older.",
+      "AGE_REQUIREMENT",
+    );
+  }
   if (
     existing.upiId === parsedUpiId.data &&
     existing.phoneNumber === parsedPhoneNumber.data
   ) {
     return existing;
   }
-  if (existing.isAdultConfirmed !== true) {
+  if (
+    existing.paymentDetailUpdateAt &&
+    existing.paymentDetailUpdateAt.getTime() > Date.now() - CHANGE_LOCK_MS
+  ) {
     throw new AppError(
-      "Confirm that you are 18 or older before saving a UPI ID.",
-      "AGE_CONFIRMATION_REQUIRED",
+      "Payment details can be changed once every 24 hours.",
+      "PAYMENT_DETAILS_CHANGE_LIMIT",
     );
   }
 
-  const updated = await userRepository.updatePayoutDetailsIfAllowed(
+  const updated = await userRepository.updatePayoutDetailsForAdultIfAllowed(
     userId,
     parsedUpiId.data,
     parsedPhoneNumber.data,
-    new Date(Date.now() - PAYOUT_DETAILS_LOCK_MS),
+    new Date(Date.now() - CHANGE_LOCK_MS),
     session,
   );
   if (!updated) {
     throw new AppError(
-      "Your UPI ID and phone number can be changed once every 24 hours.",
-      "PAYOUT_DETAILS_CHANGE_LIMIT",
+      "Payment details can be changed once every 24 hours.",
+      "PAYMENT_DETAILS_CHANGE_LIMIT",
     );
   }
   return updated;

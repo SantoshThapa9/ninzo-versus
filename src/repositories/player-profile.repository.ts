@@ -26,20 +26,13 @@ export const playerProfileRepository = {
     );
   },
   create(userId: string, ign: string, session?: Session) {
-    return PlayerProfileModel.create([{ userId, ign, identityUpdatedAt: new Date() }], { session })
+    return PlayerProfileModel.create([{ userId, ign }], { session })
       .then((docs) => docs[0]);
   },
-  updateIdentityIfAllowed(userId: string, ign: string, cutoff: Date, session?: Session) {
+  updateIdentity(userId: string, ign: string, session?: Session) {
     return PlayerProfileModel.findOneAndUpdate(
-      {
-        userId,
-        $or: [
-          { identityUpdatedAt: { $exists: false } },
-          { identityUpdatedAt: null },
-          { identityUpdatedAt: { $lte: cutoff } },
-        ],
-      },
-      { $set: { ign, identityUpdatedAt: new Date() } },
+      { userId },
+      { $set: { ign } },
       { new: true, session },
     );
   },

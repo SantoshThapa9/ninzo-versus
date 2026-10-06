@@ -25,7 +25,7 @@ export const matchRepository = {
   },
   listOpen() {
     return MatchModel.find({ status: "open" })
-      .select("_id creatorId creatorIgn format stakeMin stakeMax rules")
+      .select("_id creatorId creatorIgn format rounds stakeMin stakeMax rules")
       .sort({ createdAt: -1 })
       .maxTimeMS(8_000)
       .lean();

@@ -22,7 +22,9 @@ export function ProfileDetailsForm({
 }) {
   const [showAgeInput, setShowAgeInput] = useState(age === null);
   const [currentAge, setCurrentAge] = useState(age);
-  const [isUnderAge, setIsUnderAge] = useState(age !== null && age < 18);
+  const [wantsSubscriptions, setWantsSubscriptions] = useState(
+    Boolean(upiId || phoneNumber),
+  );
   const submitProfile = useCallback(
     async (
       previous: SaveProfileState,
@@ -30,9 +32,7 @@ export function ProfileDetailsForm({
     ): Promise<SaveProfileState> => {
       const result = await saveProfileAction(previous, formData);
       if (typeof result?.age === "number") {
-        const adult = result.age >= 18;
         setCurrentAge(result.age);
-        setIsUnderAge(!adult);
         setShowAgeInput(false);
       }
       return result;
@@ -66,69 +66,69 @@ export function ProfileDetailsForm({
           data-tour="ign"
         />
       </div>
-      {showAgeInput ? (
-        <div>
-          <Label htmlFor="profileAge">Age</Label>
-          <Input
-            id="profileAge"
-            name="age"
-            type="number"
-            min={1}
-            max={120}
-            step={1}
-            inputMode="numeric"
-            defaultValue={currentAge ?? undefined}
-          />
-        </div>
-      ) : (
-        <input type="hidden" name="age" value={currentAge ?? ""} />
-      )}
+      <div>
+        <Label htmlFor="profileAge">Age</Label>
+        <Input
+          id="profileAge"
+          name="age"
+          type="number"
+          min={1}
+          max={120}
+          step={1}
+          inputMode="numeric"
+          defaultValue={currentAge ?? undefined}
+        />
+      </div>
 
-      {!showAgeInput && isUnderAge ? (
-        <div className="flex flex-col gap-3 rounded-lg bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-[var(--muted)]">
-            UPI unavailable — must be 18+
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="w-full shrink-0 sm:w-auto"
-            onClick={() => setShowAgeInput(true)}
+      {!showAgeInput && currentAge !== null && currentAge >= 18 ? (
+        <div className="grid gap-3">
+          <label
+            htmlFor="wantsSubscriptions"
+            className="flex cursor-pointer items-center gap-2 text-sm"
           >
-            Update Age
-          </Button>
+            <input
+              id="wantsSubscriptions"
+              type="checkbox"
+              checked={wantsSubscriptions}
+              onChange={(event) => setWantsSubscriptions(event.target.checked)}
+              className="size-4 accent-[var(--accent)]"
+            />
+            Do you want to buy in-app subscriptions?
+          </label>
+          {wantsSubscriptions ? (
+            <div className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <div>
+                <Label htmlFor="profileUpiId">UPI ID</Label>
+                <Input
+                  id="profileUpiId"
+                  name="upiId"
+                  defaultValue={upiId}
+                  placeholder="name@bank"
+                  autoComplete="off"
+                  maxLength={100}
+                  pattern="[A-Za-z0-9._-]+@[A-Za-z0-9.-]+"
+                  title="Enter a valid UPI ID, such as name@bank."
+                />
+              </div>
+              <div>
+                <Label htmlFor="profilePhoneNumber">Phone number</Label>
+                <Input
+                  id="profilePhoneNumber"
+                  name="phoneNumber"
+                  type="tel"
+                  defaultValue={phoneNumber}
+                  placeholder="+919876543210"
+                  autoComplete="tel"
+                  inputMode="tel"
+                  maxLength={16}
+                  pattern="\+?[1-9][0-9]{7,14}"
+                  title="Enter a phone number with 8 to 15 digits."
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
-
-      <div>
-        <Label htmlFor="profileUpiId">UPI ID</Label>
-        <Input
-          id="profileUpiId"
-          name="upiId"
-          defaultValue={upiId}
-          placeholder="name@bank"
-          autoComplete="off"
-          maxLength={100}
-          pattern="[A-Za-z0-9._-]+@[A-Za-z0-9.-]+"
-          title="Enter a valid UPI ID, such as name@bank."
-        />
-      </div>
-      <div>
-        <Label htmlFor="profilePhoneNumber">Phone number</Label>
-        <Input
-          id="profilePhoneNumber"
-          name="phoneNumber"
-          type="tel"
-          defaultValue={phoneNumber}
-          placeholder="+919876543210"
-          autoComplete="tel"
-          inputMode="tel"
-          maxLength={16}
-          pattern="\+?[1-9][0-9]{7,14}"
-          title="Enter a phone number with 8 to 15 digits."
-        />
-      </div>
 
       {state?.error ? (
         <p role="alert" className="text-sm text-[var(--danger)]">

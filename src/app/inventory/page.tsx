@@ -50,11 +50,8 @@ export default async function InventoryPage() {
   return (
     <section className="grid gap-4" aria-labelledby="inventory-heading">
       <header>
-        <p className="text-xs uppercase tracking-[0.16em] text-[var(--accent-2)]">
-          Player inventory
-        </p>
         <h1 id="inventory-heading" className="mt-1 text-2xl font-bold">
-          NV Token Inventory
+          Player inventory
         </h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           Complete simple activities and earn NV Tokens for your next match.
@@ -182,80 +179,6 @@ export default async function InventoryPage() {
               <p className="text-xs leading-relaxed text-[var(--muted)]">
                 Redeem your NV Tokens for a Google Play redeem code that can be
                 used for eligible apps, games, and digital content.
-              </p>
-
-              <button
-                type="button"
-                disabled
-                className="mt-3 flex w-full cursor-not-allowed items-center justify-center rounded-lg bg-gray-300 px-4 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400"
-              >
-                Currently Not Available
-              </button>
-            </div>
-          </details>
-
-          {/* Free Fire MAX */}
-          <details className="group rounded-xl border border-[var(--border)]">
-            <summary className="flex cursor-pointer list-none items-center gap-3 p-3 [&::-webkit-details-marker]:hidden">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-2)]/10">
-                <Gem size={18} className="text-[var(--accent-2)]" />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-semibold">
-                  Free Fire MAX Diamonds
-                </h3>
-                <p className="text-xs text-[var(--muted)]">
-                  Get Diamonds for Free Fire MAX.
-                </p>
-              </div>
-
-              <ChevronDown
-                size={17}
-                className="shrink-0 text-[var(--muted)] transition-transform group-open:rotate-180"
-              />
-            </summary>
-
-            <div className="border-t border-[var(--border)] px-3 pb-3 pt-3">
-              <p className="text-xs leading-relaxed text-[var(--muted)]">
-                Use your NV Tokens to redeem Diamonds for your Free Fire MAX
-                account.
-              </p>
-
-              <button
-                type="button"
-                disabled
-                className="mt-3 flex w-full cursor-not-allowed items-center justify-center rounded-lg bg-gray-300 px-4 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400"
-              >
-                Currently Not Available
-              </button>
-            </div>
-          </details>
-
-          {/* Amazon Pay */}
-          <details className="group rounded-xl border border-[var(--border)]">
-            <summary className="flex cursor-pointer list-none items-center gap-3 p-3 [&::-webkit-details-marker]:hidden">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-2)]/10">
-                <ShoppingBag size={18} className="text-[var(--accent-2)]" />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-semibold">Amazon Pay</h3>
-                <p className="text-xs text-[var(--muted)]">
-                  Redeem tokens for an Amazon Pay reward.
-                </p>
-              </div>
-
-              <ChevronDown
-                size={17}
-                className="shrink-0 text-[var(--muted)] transition-transform group-open:rotate-180"
-              />
-            </summary>
-
-            <div className="border-t border-[var(--border)] px-3 pb-3 pt-3">
-              <p className="text-xs leading-relaxed text-[var(--muted)]">
-                Exchange your NV Tokens for an Amazon Pay reward that can be
-                used toward eligible purchases.
               </p>
 
               <button

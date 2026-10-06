@@ -2,8 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { invalidateRankingsForNavigation } from "@/app/rank/actions";
 
 export function RankRouteRefresh() {
   const pathname = usePathname();
@@ -15,18 +13,7 @@ export function RankRouteRefresh() {
     previousPathname.current = pathname;
     if (!enteredRank) return;
 
-    let cancelled = false;
-    void invalidateRankingsForNavigation()
-      .then(() => {
-        if (!cancelled) router.refresh();
-      })
-      .catch(() => {
-        if (!cancelled) toast.error("Couldn't refresh rankings. Try again.");
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    router.refresh();
   }, [pathname, router]);
 
   return null;

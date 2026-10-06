@@ -1,8 +1,24 @@
-db.getSiblingDB("test").users.updateMany(
+db.users.updateMany({}, [
   {
-    ign: { $in: ["KITTU", "GAANJA"] },
+    $set: {
+      matchesPlayed: {
+        $max: [
+          {
+            $subtract: [
+              {
+                $convert: {
+                  input: "$matchesPlayed",
+                  to: "int",
+                  onError: 0,
+                  onNull: 0,
+                },
+              },
+              1,
+            ],
+          },
+          0,
+        ],
+      },
+    },
   },
-  {
-    $set: { matchesPlayed: 1 },
-  },
-);
+]);

@@ -60,5 +60,4 @@ if (existingHostedEventModel && !existingHostedEventModel.schema.path("seasonId"
     seasonId: { type: Schema.Types.ObjectId, ref: "Season" },
   });
 }
-
 export const HostedEventModel = existingHostedEventModel || model("HostedEvent", HostedEventSchema);

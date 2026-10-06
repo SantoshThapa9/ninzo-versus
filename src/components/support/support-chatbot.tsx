@@ -27,15 +27,12 @@ function welcomeMessage(): ChatMessage {
   );
 }
 
-/**
- * localStorage external store
- */
 function getSnapshot(): string {
   if (typeof window === "undefined") {
     return "";
   }
 
-  return localStorage.getItem(CHAT_STORAGE_KEY) ?? "";
+  return sessionStorage.getItem(CHAT_STORAGE_KEY) ?? "";
 }
 
 function getServerSnapshot(): string {
@@ -91,10 +88,8 @@ export function SupportChatbot() {
   const [loading, setLoading] = useState(false);
 
   function saveMessages(nextMessages: ChatMessage[]) {
-    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(nextMessages));
+    sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(nextMessages));
 
-    // `storage` does not fire in the same tab, so manually notify
-    // the external store that localStorage has changed.
     window.dispatchEvent(
       new StorageEvent("storage", {
         key: CHAT_STORAGE_KEY,
@@ -106,7 +101,7 @@ export function SupportChatbot() {
   function startNewChat() {
     if (loading) return;
 
-    localStorage.removeItem(CHAT_STORAGE_KEY);
+    sessionStorage.removeItem(CHAT_STORAGE_KEY);
 
     window.dispatchEvent(
       new StorageEvent("storage", {

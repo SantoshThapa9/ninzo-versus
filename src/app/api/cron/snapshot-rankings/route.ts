@@ -1,7 +1,7 @@
 import { AppError, toErrorMessage } from "@/lib/errors";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { assertCronSecret } from "@/services/media.service";
-import { snapshotSeasonRankingsAtMonthEnd } from "@/services/rank.service";
+import { snapshotPreviousSeasonAtMonthStart } from "@/services/rank.service";
 
 export async function GET(request: Request) {
   try {
@@ -10,11 +10,12 @@ export async function GET(request: Request) {
       request.headers.get("authorization");
     assertCronSecret(secret?.replace("Bearer ", "") ?? null);
 
-    const result = await snapshotSeasonRankingsAtMonthEnd();
+    const result = await snapshotPreviousSeasonAtMonthStart();
     if (result.executed) {
       revalidateTag("global-rankings", { expire: 0 });
       revalidateTag("monthly-seasons", { expire: 0 });
       revalidatePath("/rank");
+      revalidatePath("/profile");
     }
     return Response.json(result);
   } catch (error) {

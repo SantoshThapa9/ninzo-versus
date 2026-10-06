@@ -1,12 +1,12 @@
 import { Card } from "@/components/ui/card";
 import { RankingsList } from "@/components/rank/rankings-list";
-import { RANKS } from "@/lib/rank";
 import { listSeasonRanks } from "@/services/rank.service";
 import { listCompletedEventResults } from "@/services/event.service";
 import { listSeasons } from "@/services/season.service";
 import { CalendarDays, Trophy } from "lucide-react";
 import Link from "next/link";
-import { SeasonSelector } from "@/components/rank/season-selector";
+import { RankFilters } from "@/components/rank/rank-filters";
+import { PlayerRankCard } from "@/components/rank/playerRankCard";
 
 type RankTab = "rankings" | "event-results";
 
@@ -44,16 +44,11 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
         <h1 className="mt-1 text-2xl font-extrabold">Rank</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           {tab === "rankings"
-            ? "Monthly standings use current account stats and are saved when the month closes."
+            ? "Top 10 players get 10 NV tokens each at season end."
             : "Season results from completed Full Map events."}
         </p>
       </div>
-
-      <SeasonSelector
-        seasons={seasons.map(({ slug, name }) => ({ slug, name }))}
-        selectedSlug={season.slug}
-        tab={tab}
-      />
+      <PlayerRankCard />
 
       <div
         role="tablist"
@@ -79,6 +74,15 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
           Full Map results
         </Link>
       </div>
+      <RankFilters
+        seasons={seasons.map(({ slug, name, endDate }) => ({
+          slug,
+          name,
+          daysInMonth: endDate.getUTCDate(),
+        }))}
+        selectedSlug={season.slug}
+        tab={tab}
+      />
 
       {tab === "event-results" ? (
         eventResults.length === 0 ? (
@@ -135,42 +139,8 @@ export default async function RankPage({ searchParams }: PageProps<"/rank">) {
         )
       ) : (
         <>
-          <Card className="overflow-hidden">
-            <details className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold [&::-webkit-details-marker]:hidden">
-                <span>Rank levels</span>
-
-                <p className="text-xs text-[var(--muted)] transition-transform duration-200 group-open:rotate-180">
-                  ▼
-                </p>
-              </summary>
-              <p className="mt-1 text-sm text-[var(--muted)]">
-                {"Rank win rates decay when you stop competing."}
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-                {RANKS.map((rank, index) => (
-                  <div
-                    key={rank.name}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
-                  >
-                    <p className={`font-bold ${rank.className}`}>{rank.name}</p>
-
-                    <p className="mt-0.5 text-[var(--muted)]">
-                      {index === 0
-                        ? "≤49%"
-                        : index === RANKS.length - 1
-                          ? "90–100%"
-                          : `${rank.minimumWinRate}–${
-                              RANKS[index + 1].minimumWinRate - 1
-                            }%`}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </details>
-          </Card>
           <RankingsList
-            key={season.slug}
+            key={`${season.slug}:${JSON.stringify(rankingPage.players)}:${rankingPage.hasMore}`}
             initialPlayers={rankingPage.players}
             initialHasMore={rankingPage.hasMore}
             seasonSlug={season.slug}

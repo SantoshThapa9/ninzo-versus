@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { createMatchAction } from "@/app/actions/match";
 import { getPlatformSettings } from "@/services/settings.service";
 import { CLASH_DEFAULTS, ECONOMY_DEFAULTS } from "@/config/defaults";
+import { EVENT_ROUNDS } from "@/types/enums";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 
@@ -38,6 +39,22 @@ export default async function NewClashPage() {
             {CLASH_DEFAULTS.teamSizes.map((size) => (
               <option key={size} value={size}>
                 {size}v{size}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label htmlFor="rounds">Rounds</Label>
+          <select
+            id="rounds"
+            name="rounds"
+            defaultValue={7}
+            required
+            className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3"
+          >
+            {EVENT_ROUNDS.map((rounds) => (
+              <option key={rounds} value={rounds}>
+                {rounds}
               </option>
             ))}
           </select>

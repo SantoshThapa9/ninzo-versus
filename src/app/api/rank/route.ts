@@ -13,5 +13,8 @@ export async function GET(request: Request) {
 
   const season = await getSeasonBySlug(searchParams.get("season") ?? undefined);
   const { players, hasMore } = await listSeasonRanks(season, limit, offset);
-  return Response.json({ players, hasMore, offset, limit });
+  return Response.json(
+    { players, hasMore, offset, limit },
+    { headers: { "Cache-Control": "no-store, max-age=0" } },
+  );
 }

@@ -332,7 +332,11 @@ export async function listCompletedEventResults(
   }));
 }
 
-export async function getEventDetail(eventId: string, isAdmin: boolean) {
+export async function getEventDetail(
+  eventId: string,
+  isAdmin: boolean,
+  userId?: string,
+) {
   await connectDb();
   const event = isAdmin
     ? await eventRepository.findByIdWithRoom(eventId)
@@ -342,5 +346,12 @@ export async function getEventDetail(eventId: string, isAdmin: boolean) {
     throw new AppError("Event not found.", "NOT_FOUND", 404);
   }
   const teams = isAdmin ? await eventRepository.listTeams(eventId) : [];
-  return { event: JSON.parse(JSON.stringify(event)), teams };
+  const registeredTeam = userId
+    ? await eventRepository.findTeam(eventId, userId)
+    : null;
+  return {
+    event: JSON.parse(JSON.stringify(event)),
+    teams,
+    isRegistered: Boolean(registeredTeam),
+  };
 }

@@ -102,7 +102,7 @@ export function AppTour() {
           popover: {
             title: "Build your rank",
             description:
-              "Win settled challenges to improve your win rate and climb the global Rank board.",
+              "Earn Rank Score from settled challenges and climb the monthly Rank board.",
             doneBtnText: "Set profile",
             onDoneClick: () => goTo("profile"),
           },

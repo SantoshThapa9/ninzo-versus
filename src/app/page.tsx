@@ -8,14 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { connectDb } from "@/lib/db/mongoose";
 import { userRepository } from "@/repositories/user.repository";
-import {
-  ChevronRight,
-  Coins,
-  Swords,
-  Trophy,
-} from "lucide-react";
+import { ChevronRight, Coins, Swords, Trophy } from "lucide-react";
 import { EventCard } from "@/components/events/EventCard";
-import { DailyFreeReward } from "@/components/wallet/daily-free-reward";
+
 import { getDailyFreeRewardStatus } from "@/services/wallet.service";
 
 const getHomeSession = cache(async () => auth());
@@ -47,50 +42,18 @@ async function HomeAccountSummary() {
   });
 
   return (
-    <>
-      <Card className="relative overflow-hidden border-[var(--accent)]/25 bg-gradient-to-br from-[var(--card)] to-[#101820]">
-        <div className="absolute -right-7 -top-10 h-32 w-32 rounded-full bg-[var(--accent)]/15 blur-2xl" />
-        <div className="sr-only">
-          <h2>Ninzo Versus</h2>
-          <p>
-            Ninzo Versus is a competitive player platform for tournaments,
-            challenges, seasonal global rankings, events, achievements, and
-            player showcases.
-          </p>
-          <p>
-            Discover competitive events, participate in challenges, follow
-            global rankings, build your player profile, and showcase your
-            achievements.
-          </p>
-        </div>
-        <div className="relative flex items-center gap-4">
-          <div className="grid size-11 shrink-0 place-items-center rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]">
-            <Coins size={21} />
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-2)]">
-              NV Token balance
-            </p>
-            <p className="mt-0.5 text-3xl font-extrabold leading-none">
-              {user?.availableCoins ?? 0}{" "}
-              <span className="text-base text-white/65">NV</span>
-            </p>
-            <p className="mt-2 text-xs text-[var(--muted)]">
-              {user?.lockedCoins ?? 0} NV reserved for registrations
-            </p>
-          </div>
-        </div>
-      </Card>
-      <DailyFreeReward
-        signedIn={Boolean(userId)}
-        claimed={dailyReward?.claimed ?? false}
-        rewardDay={dailyReward?.rewardDay ?? 1}
-        streak={dailyReward?.streak ?? 0}
-        reset={dailyReward?.reset ?? false}
-        cycleComplete={dailyReward?.cycleComplete ?? false}
-        nextAvailableLabel={nextRewardLabel}
-      />
-    </>
+    <div className="sr-only">
+      <h2>Ninzo Versus</h2>
+      <p>
+        Ninzo Versus is a competitive player platform for tournaments,
+        challenges, seasonal global rankings, events, achievements, and player
+        showcases.
+      </p>
+      <p>
+        Discover competitive events, participate in challenges, follow global
+        rankings, build your player profile, and showcase your achievements.
+      </p>
+    </div>
   );
 }
 
@@ -124,15 +87,13 @@ async function ChallengeHeader() {
 async function OpenChallenges() {
   const matches = await listOpenMatches();
   if (matches.length === 0) {
-    return <p className="text-sm text-[var(--muted)]">No open challenges yet.</p>;
+    return (
+      <p className="text-sm text-[var(--muted)]">No open challenges yet.</p>
+    );
   }
 
   return matches.map((match) => (
-    <Link
-      key={match._id}
-      href={`/clash/${match._id}`}
-      className="group block"
-    >
+    <Link key={match._id} href={`/clash/${match._id}`} className="group block">
       <Card className="relative overflow-hidden rounded-2xl border-white/15 p-0 transition duration-300 group-hover:-translate-y-0.5 group-hover:border-[var(--accent)]/70 group-hover:shadow-[0_18px_44px_rgba(255,106,0,0.18)]">
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -165,6 +126,10 @@ async function OpenChallenges() {
           </div>
           <div className="flex items-center justify-between gap-3 text-xs">
             <div className="flex gap-2">
+              <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-1">
+                <p className="text-[9px] text-white/55">Rounds</p>
+                <p className="font-bold">{match.rounds}</p>
+              </div>
               <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-1">
                 <p className="text-[9px] text-white/55">Headshot</p>
                 <p className="font-bold">{match.headshot}</p>
@@ -200,7 +165,6 @@ async function PublicEvents() {
       ) : (
         events.map((event) => <EventCard key={event._id} event={event} />)
       )}
-      <p className="text-xs text-[var(--muted)]">{settings.clashWarning}</p>
     </>
   );
 }
@@ -210,12 +174,6 @@ export default function HomePage() {
     <div className="grid gap-6 pb-2">
       <Suspense fallback={<HomeSectionFallback />}>
         <HomeAccountSummary />
-      </Suspense>
-      <Suspense fallback={<HomeSectionFallback height="h-16" />}>
-        <ChallengeHeader />
-      </Suspense>
-      <Suspense fallback={<HomeSectionFallback height="h-40" />}>
-        <OpenChallenges />
       </Suspense>
       <div className="pt-1" data-tour="daily-events">
         <div className="flex items-center gap-2 text-[var(--accent)]">
@@ -228,6 +186,12 @@ export default function HomePage() {
       </div>
       <Suspense fallback={<HomeSectionFallback height="h-40" />}>
         <PublicEvents />
+      </Suspense>
+      <Suspense fallback={<HomeSectionFallback height="h-16" />}>
+        <ChallengeHeader />
+      </Suspense>
+      <Suspense fallback={<HomeSectionFallback height="h-40" />}>
+        <OpenChallenges />
       </Suspense>
     </div>
   );

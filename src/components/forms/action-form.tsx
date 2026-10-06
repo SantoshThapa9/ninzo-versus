@@ -12,11 +12,13 @@ export function ActionForm({
   children,
   submitLabel,
   confirmMessage,
+  disabled = false,
 }: {
   action: Action;
   children?: React.ReactNode;
   submitLabel: string;
   confirmMessage?: string;
+  disabled?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
   return (
@@ -30,7 +32,7 @@ export function ActionForm({
       {children}
       {state?.error ? <p className="text-sm text-[var(--danger)]">{state.error}</p> : null}
       {state?.ok ? <p className="text-sm text-[var(--accent-2)]">{state.message ?? "Saved."}</p> : null}
-      <Button type="submit" size="full" disabled={pending}>
+      <Button type="submit" size="full" disabled={pending || disabled}>
         {pending ? "Please wait..." : submitLabel}
       </Button>
     </form>

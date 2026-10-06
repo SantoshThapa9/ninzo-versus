@@ -22,7 +22,11 @@ export default async function EventDetailPage({
   if (!session?.user?.id) redirect("/login");
   const { id } = await params;
   const isAdmin = session.user.role === UserRole.ADMIN;
-  const { event } = await getEventDetail(id, isAdmin);
+  const { event, isRegistered } = await getEventDetail(
+    id,
+    isAdmin,
+    session.user.id,
+  );
   const canPay =
     event.status === "published" || event.status === "registration_open";
   const freeEntry = event.entryFeeCoins === 0;
@@ -68,7 +72,7 @@ export default async function EventDetailPage({
               <div>
                 <p className="text-white/55">Starts</p>
                 <p className="mt-0.5 font-bold">
-                  {new Date(event.eventDate).toLocaleDateString("en-IN", {
+                  {new Date().toLocaleDateString("en-IN", {
                     day: "numeric",
                     month: "short",
                   })}{" "}
@@ -163,7 +167,10 @@ export default async function EventDetailPage({
           </p>
           <ActionForm
             action={registerEventAction}
-            submitLabel="Confirm registration"
+            submitLabel={
+              isRegistered ? "Already registered" : "Confirm registration"
+            }
+            disabled={isRegistered}
           >
             <input type="hidden" name="eventId" value={id} />
           </ActionForm>

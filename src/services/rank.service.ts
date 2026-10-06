@@ -1,17 +1,70 @@
-import { Types } from "mongoose";
-import { unstable_cache } from "next/cache";
-import { connectDb } from "@/lib/db/mongoose";
+import { Types, type ClientSession } from "mongoose";
+import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import {
   getRank,
-  getWinRate,
+  getRankScore,
   RANK_PAGE_SIZE,
   type PlayerRank,
 } from "@/lib/rank";
 import { SeasonModel, type SeasonDoc } from "@/models/season";
 import { SeasonPlayerStatModel } from "@/models/season-player-stat";
+import { MatchModel } from "@/models/match";
 import { UserModel } from "@/models/user";
-import { UserRole } from "@/types/enums";
+import { CoinTxnType, MatchStatus, UserRole } from "@/types/enums";
 import { getOrCreateSeasonForDate } from "@/services/season.service";
+import { applyLedger } from "@/services/wallet.service";
+import { getSeasonPlayerStatId } from "@/lib/season-player-stat";
+
+const MONTHLY_RANK_PRIZE = 10;
+const SNAPSHOT_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
+
+type SeasonMatchStat = {
+  _id: Types.ObjectId;
+  matchesPlayed: number;
+  wins: number;
+};
+
+function aggregateSeasonMatchStats(
+  seasonId: Types.ObjectId,
+  session?: ClientSession,
+) {
+  return MatchModel.aggregate<SeasonMatchStat>([
+    {
+      $match: {
+        seasonId,
+        status: MatchStatus.SETTLED,
+        winnerTeam: { $in: ["A", "B"] },
+      },
+    },
+    {
+      $project: {
+        participants: [
+          {
+            userId: "$creatorId",
+            won: { $eq: ["$winnerTeam", "A"] },
+          },
+          {
+            userId: "$opponentCaptainId",
+            won: { $eq: ["$winnerTeam", "B"] },
+          },
+        ],
+      },
+    },
+    { $unwind: "$participants" },
+    {
+      $group: {
+        _id: "$participants.userId",
+        matchesPlayed: { $sum: 1 },
+        wins: {
+          $sum: { $cond: ["$participants.won", 1, 0] },
+        },
+      },
+    },
+  ])
+    .option({ maxTimeMS: 8_000 })
+    .session(session ?? null)
+    .exec();
+}
 
 export type { PlayerRank };
 export { RANK_PAGE_SIZE };
@@ -25,15 +78,16 @@ export async function getPlayerRank(userId: string) {
 
   const wins = Number(user.wins) || 0;
   const matches = Number(user.matchesPlayed) || 0;
-  const winRate = getWinRate(wins, matches);
+  const rankScore = getRankScore(wins, matches);
   return {
     userId,
     displayName: user.displayName,
     ign: user.ign?.trim() || user.displayName,
     wins,
+    losses: Math.max(matches - wins, 0),
     matches,
-    winRate,
-    rank: getRank(winRate).name,
+    rankScore,
+    rank: getRank(rankScore).name,
   } satisfies PlayerRank;
 }
 
@@ -42,7 +96,7 @@ type AggregatedPlayer = {
   wins: number;
   losses: number;
   matches: number;
-  winRate: number;
+  rankScore: number;
   displayName: string;
   ign: string;
 };
@@ -55,8 +109,8 @@ function toPlayerRank(player: AggregatedPlayer): PlayerRank {
     wins: player.wins,
     losses: player.losses,
     matches: player.matches,
-    winRate: player.winRate,
-    rank: getRank(player.winRate).name,
+    rankScore: player.rankScore,
+    rank: getRank(player.rankScore).name,
   };
 }
 
@@ -64,13 +118,17 @@ const rankedPlayerStages = [
   {
     $addFields: {
       losses: { $max: [{ $subtract: ["$matches", "$wins"] }, 0] },
-      winRate: {
-        $cond: [
-          { $gt: ["$matches", 0] },
+      rankScore: {
+        $max: [
           {
-            $round: [
-              { $multiply: [{ $divide: ["$wins", "$matches"] }, 100] },
-              0,
+            $subtract: [
+              { $multiply: ["$wins", 10] },
+              {
+                $multiply: [
+                  { $max: [{ $subtract: ["$matches", "$wins"] }, 0] },
+                  5,
+                ],
+              },
             ],
           },
           0,
@@ -80,7 +138,7 @@ const rankedPlayerStages = [
   },
   {
     $sort: {
-      winRate: -1,
+      rankScore: -1,
       wins: -1,
       matches: -1,
       ign: 1,
@@ -126,7 +184,7 @@ async function aggregateCurrentRankedPlayers(skip: number, limit: number) {
         },
       },
     },
-    { $match: { wins: { $gte: 1 } } },
+    { $match: { matches: { $gte: 1 } } },
     ...rankedPlayerStages,
     { $skip: skip },
     { $limit: limit },
@@ -134,7 +192,7 @@ async function aggregateCurrentRankedPlayers(skip: number, limit: number) {
       $project: {
         wins: 1,
         matches: 1,
-        winRate: 1,
+        rankScore: 1,
         losses: 1,
         displayName: 1,
         ign: 1,
@@ -149,7 +207,12 @@ async function aggregateSeasonRankedPlayers(
   limit: number,
 ) {
   return SeasonPlayerStatModel.aggregate<AggregatedPlayer>([
-    { $match: { seasonId: new Types.ObjectId(seasonId), wins: { $gte: 1 } } },
+    {
+      $match: {
+        seasonId: new Types.ObjectId(seasonId),
+        matchesPlayed: { $gte: 1 },
+      },
+    },
     {
       $lookup: {
         from: UserModel.collection.name,
@@ -165,7 +228,10 @@ async function aggregateSeasonRankedPlayers(
         wins: 1,
         matches: "$matchesPlayed",
         displayName: {
-          $ifNull: ["$displayName", { $ifNull: ["$user.displayName", "Player"] }],
+          $ifNull: [
+            "$displayName",
+            { $ifNull: ["$user.displayName", "Player"] },
+          ],
         },
         ign: {
           $let: {
@@ -197,7 +263,7 @@ async function aggregateSeasonRankedPlayers(
       $project: {
         wins: 1,
         matches: 1,
-        winRate: 1,
+        rankScore: 1,
         losses: 1,
         displayName: 1,
         ign: 1,
@@ -206,27 +272,6 @@ async function aggregateSeasonRankedPlayers(
   ]).option({ maxTimeMS: 8_000 });
 }
 
-const getCachedSeasonRanks = unstable_cache(
-  async (
-    seasonId: string,
-    isActive: boolean,
-    limit: number,
-    offset: number,
-  ) => {
-    await connectDb();
-    const aggregate = isActive
-      ? aggregateCurrentRankedPlayers
-      : (skip: number, count: number) =>
-          aggregateSeasonRankedPlayers(seasonId, skip, count);
-    const rows = await aggregate(offset, limit + 1);
-    const hasMore = rows.length > limit;
-    const players = (hasMore ? rows.slice(0, limit) : rows).map(toPlayerRank);
-    return { players, hasMore };
-  },
-  ["season-rankings"],
-  { revalidate: 30, tags: ["global-rankings"] },
-);
-
 export async function listSeasonRanks(
   season: Pick<SeasonDoc, "_id" | "status" | "rankingsSnapshottedAt">,
   limit = RANK_PAGE_SIZE,
@@ -234,93 +279,168 @@ export async function listSeasonRanks(
 ): Promise<{ players: PlayerRank[]; hasMore: boolean }> {
   const safeLimit = Math.min(Math.max(1, limit), 50);
   const safeOffset = Math.max(0, offset);
-  return getCachedSeasonRanks(
-    String(season._id),
-    season.status === "active" && !season.rankingsSnapshottedAt,
-    safeLimit,
-    safeOffset,
-  );
+  await connectDb();
+  const isCurrentSeason =
+    season.status === "active" && !season.rankingsSnapshottedAt;
+  const rows = isCurrentSeason
+    ? await aggregateCurrentRankedPlayers(safeOffset, safeLimit + 1)
+    : await aggregateSeasonRankedPlayers(
+        String(season._id),
+        safeOffset,
+        safeLimit + 1,
+      );
+  const hasMore = rows.length > safeLimit;
+  const players = (hasMore ? rows.slice(0, safeLimit) : rows).map(toPlayerRank);
+  return { players, hasMore };
 }
 
-export async function snapshotSeasonRankingsAtMonthEnd(date = new Date()) {
-  const nextDay = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1),
-  );
-  if (nextDay.getUTCMonth() === date.getUTCMonth()) {
-    return { executed: false, reason: "not-month-end" } as const;
+export async function snapshotPreviousSeasonAtMonthStart(date = new Date()) {
+  if (date.getUTCDate() !== 1) {
+    return {
+      executed: false,
+      reason: "outside-first-day",
+    } as const;
   }
 
   await connectDb();
-  const season = await getOrCreateSeasonForDate(date);
+  const snapshotDate = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 0),
+  );
+  const season = await getOrCreateSeasonForDate(snapshotDate);
+  const activeSeason = await getOrCreateSeasonForDate(date);
   if (season.rankingsSnapshottedAt) {
     return { executed: false, reason: "already-snapshotted" } as const;
   }
 
-  const seasonId = season._id;
-  const target = SeasonPlayerStatModel.collection.name;
-  await UserModel.aggregate([
-    { $match: { role: { $ne: UserRole.PLATFORM } } },
+  const now = new Date();
+  const staleLockAt = new Date(now.getTime() - SNAPSHOT_LOCK_TIMEOUT_MS);
+  const lock = await SeasonModel.updateOne(
     {
-      $project: {
-        _id: {
-          $concat: [
-            { $toString: { $literal: seasonId } },
-            ":",
-            { $toString: "$_id" },
-          ],
+      _id: season._id,
+      rankingsSnapshottedAt: { $exists: false },
+      $or: [
+        { rankingsSnapshotStartedAt: { $exists: false } },
+        { rankingsSnapshotStartedAt: { $lte: staleLockAt } },
+      ],
+    },
+    { $set: { rankingsSnapshotStartedAt: now } },
+  ).exec();
+  if (lock.modifiedCount !== 1) {
+    return { executed: false, reason: "snapshot-in-progress" } as const;
+  }
+
+  const seasonId = season._id;
+  const seasonStats = await aggregateSeasonMatchStats(seasonId);
+  const users = await UserModel.find({
+    _id: { $in: seasonStats.map((stat) => stat._id) },
+  })
+    .select("_id displayName ign")
+    .maxTimeMS(8_000)
+    .lean();
+  const userById = new Map(users.map((user) => [String(user._id), user]));
+  await SeasonPlayerStatModel.deleteMany({ seasonId }).exec();
+  if (seasonStats.length) {
+    await SeasonPlayerStatModel.insertMany(
+      seasonStats.map((stat) => {
+        const user = userById.get(String(stat._id));
+        const displayName = user?.displayName ?? "Player";
+        return {
+          _id: getSeasonPlayerStatId(String(seasonId), String(stat._id)),
+          userId: stat._id,
+          seasonId,
+          matchesPlayed: stat.matchesPlayed,
+          wins: stat.wins,
+          displayName,
+          ign: user?.ign?.trim() || displayName,
+        };
+      }),
+      { ordered: false },
+    );
+  }
+
+  const winners = await aggregateSeasonRankedPlayers(String(seasonId), 0, 10);
+  const snapshottedAt = new Date();
+  const finalized = await withTransaction(async (session) => {
+    const currentSeason = await SeasonModel.findOne({
+      _id: seasonId,
+      rankingsSnapshottedAt: { $exists: false },
+    }).session(session);
+    if (!currentSeason) return false;
+
+    for (const player of winners) {
+      await applyLedger({
+        userId: String(player._id),
+        type: CoinTxnType.PRIZE_PAYOUT,
+        amount: MONTHLY_RANK_PRIZE,
+        availableDelta: MONTHLY_RANK_PRIZE,
+        lockedDelta: 0,
+        referenceType: "monthly_rank_reward",
+        referenceId: season.slug,
+        idempotencyKey: `monthly-rank-reward:${season.slug}:${String(player._id)}`,
+        metadata: {
+          season: season.slug,
+          placement: winners.indexOf(player) + 1,
+          rankScore: player.rankScore,
         },
-        userId: "$_id",
-        seasonId: { $literal: seasonId },
-        matchesPlayed: {
-          $convert: {
-            input: "$matchesPlayed",
-            to: "long",
-            onError: 0,
-            onNull: 0,
-          },
+        session,
+      });
+    }
+
+    const result = await SeasonModel.updateOne(
+      { _id: seasonId, rankingsSnapshottedAt: { $exists: false } },
+      {
+        $set: {
+          rankingsSnapshottedAt: snapshottedAt,
+          status: "completed",
         },
-        settledMatchesPlayed: {
-          $convert: {
-            input: "$matchesPlayed",
-            to: "long",
-            onError: 0,
-            onNull: 0,
-          },
-        },
-        inactivityMatchesPlayed: { $literal: 0 },
-        wins: {
-          $convert: { input: "$wins", to: "long", onError: 0, onNull: 0 },
-        },
-        displayName: { $ifNull: ["$displayName", "Player"] },
-        ign: {
-          $let: {
-            vars: { name: { $trim: { input: { $ifNull: ["$ign", ""] } } } },
-            in: {
-              $cond: [
-                { $ne: ["$$name", ""] },
-                "$$name",
-                { $ifNull: ["$displayName", "Player"] },
-              ],
+        $unset: { rankingsSnapshotStartedAt: 1 },
+      },
+      { session },
+    ).exec();
+    if (result.modifiedCount !== 1) {
+      throw new Error(
+        `Unable to finalize monthly rankings for ${season.slug}.`,
+      );
+    }
+
+    await UserModel.updateMany(
+      { role: { $ne: UserRole.PLATFORM } },
+      { $set: { matchesPlayed: "0", wins: "0" } },
+      { session },
+    ).exec();
+    await SeasonPlayerStatModel.deleteMany({ seasonId: activeSeason._id })
+      .session(session)
+      .exec();
+    const activeSeasonStats = await aggregateSeasonMatchStats(
+      activeSeason._id,
+      session,
+    );
+    if (activeSeasonStats.length) {
+      await UserModel.bulkWrite(
+        activeSeasonStats.map((stats) => ({
+          updateOne: {
+            filter: { _id: stats._id },
+            update: {
+              $set: {
+                matchesPlayed: String(stats.matchesPlayed),
+                wins: String(stats.wins),
+              },
             },
           },
-        },
-      },
-    },
-    {
-      $merge: {
-        into: target,
-        on: "_id",
-        whenMatched: "replace",
-        whenNotMatched: "insert",
-      },
-    },
-  ]).exec();
+        })),
+        { session },
+      );
+    }
+    return true;
+  });
 
-  const snapshottedAt = new Date();
-  await SeasonModel.updateOne(
-    { _id: seasonId, rankingsSnapshottedAt: { $exists: false } },
-    { $set: { rankingsSnapshottedAt: snapshottedAt, status: "completed" } },
-  ).exec();
-
-  return { executed: true, season: season.slug, snapshottedAt };
+  return finalized
+    ? {
+        executed: true,
+        season: season.slug,
+        snapshottedAt,
+        rewardedPlayers: winners.length,
+        rewardPerPlayer: MONTHLY_RANK_PRIZE,
+      }
+    : { executed: false, reason: "already-snapshotted" };
 }

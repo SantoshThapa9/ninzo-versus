@@ -26,6 +26,7 @@ export default async function ClashDetailPage({
   const match = data.match as {
     _id: string;
     format: number;
+    rounds?: number;
     status: string;
     stakeMin: number;
     stakeMax: number;
@@ -79,6 +80,8 @@ export default async function ClashDetailPage({
           </div>
           <p className="mt-3 text-sm leading-6 text-white/70">{match.rules}</p>
           <p className="mt-3 break-words text-sm">
+            {match.rounds ?? 7} rounds{" "}
+            <span className="hidden sm:inline">•</span>{" "}
             {match.stakeMin === match.stakeMax
               ? `Match registration: ${match.stakeMin} NV Tokens each`
               : `Match registration range: ${match.stakeMin}–${match.stakeMax} NV Tokens each`}{" "}

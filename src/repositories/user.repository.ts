@@ -1,9 +1,6 @@
 import mongoose from "mongoose";
 import { UserModel, type UserDoc } from "@/models/user";
-import { SeasonPlayerStatModel } from "@/models/season-player-stat";
 import { UserRole } from "@/types/enums";
-import { lastMatchPlayedDateExpression } from "@/lib/last-match-played";
-import { getSeasonPlayerStatId } from "@/lib/season-player-stat";
 import { SeasonModel } from "@/models/season";
 
 type Session = mongoose.ClientSession;
@@ -28,25 +25,12 @@ function incrementNumericString(field: string) {
 }
 
 export const userRepository = {
-  /**
-   * Earlier imports stored Mongo shell notation (for example
-   * `ISODate("...")`) as text. Convert it in the database before hydrating a
-   * User document, otherwise Mongoose caches a cast error on that document
-   * and rejects unrelated wallet saves.
-   */
-  normalizeLegacyLastMatchPlayed(id: string, session?: Session) {
-    return UserModel.updateOne(
-      { _id: id, lastMatchPlayed: { $type: "string" } },
-      [{ $set: { lastMatchPlayed: lastMatchPlayedDateExpression() } }],
-      { session, updatePipeline: true },
-    );
-  },
   findById(id: string, session?: Session) {
     return UserModel.findById(id).session(session ?? null);
   },
   findByIdLean(id: string) {
     return UserModel.findById(id)
-      .select("displayName email ign age upiId phoneNumber lastMatchPlayed")
+      .select("displayName email ign age upiId phoneNumber")
       .lean();
   },
   findByEmail(email: string) {
@@ -85,21 +69,29 @@ export const userRepository = {
   },
   async recordSettledMatchResult(
     participantIds: [string, string],
-    winnerId: string | undefined,
-    completedAt: Date,
+    winnerId: string,
     seasonId: ObjectId,
     session: Session,
   ) {
     const participants = [...new Set(participantIds)];
     if (
       participants.length !== 2 ||
-      (winnerId !== undefined && !participants.includes(winnerId))
+      !participants.includes(winnerId)
     ) {
-      throw new Error("A settled match must have two distinct participants and a valid winner.");
+      throw new Error("A ranked match must have two distinct participants and a valid winner.");
     }
 
+    // A match in an archived month cannot update the active monthly counters.
+    const activeSeason = await SeasonModel.exists({
+      _id: seasonId,
+      status: "active",
+      rankingsSnapshottedAt: { $exists: false },
+      rankingsSnapshotStartedAt: { $exists: false },
+    }).session(session);
+    if (!activeSeason) return;
+
     // This is called exclusively from the settlement transaction. The match's
-    // SETTLED transition and both counter writes therefore commit or roll back
+    // SETTLED transition and both player counter writes therefore commit or roll back
     // together; retries cannot count the same match twice.
     const result = await UserModel.bulkWrite(
       participants.map((userId) => ({
@@ -109,7 +101,6 @@ export const userRepository = {
             {
               $set: {
                 matchesPlayed: incrementNumericString("matchesPlayed"),
-                lastMatchPlayed: completedAt,
                 ...(userId === winnerId
                   ? { wins: incrementNumericString("wins") }
                   : {}),
@@ -124,103 +115,75 @@ export const userRepository = {
     if (result.matchedCount !== participants.length) {
       throw new Error("Match participant no longer exists.");
     }
-
-    const seasonIsSnapshotted = await SeasonModel.exists({
-      _id: seasonId,
-      rankingsSnapshottedAt: { $exists: true },
-    }).session(session);
-    if (!seasonIsSnapshotted) {
-      const seasonResult = await SeasonPlayerStatModel.bulkWrite(
-        participants.map((userId) => ({
-          updateOne: {
-            filter: { _id: getSeasonPlayerStatId(String(seasonId), userId) },
-            update: {
-              $inc: {
-                matchesPlayed: 1,
-                settledMatchesPlayed: 1,
-                ...(userId === winnerId ? { wins: 1 } : {}),
-              },
-              $setOnInsert: {
-                userId,
-                seasonId,
-              },
-            },
-            upsert: true,
-          },
-        })),
-        { session },
-      );
-
-      if (
-        seasonResult.matchedCount + seasonResult.upsertedCount !==
-        participants.length
-      ) {
-        throw new Error("Could not update all monthly match statistics.");
-      }
-    }
   },
-  updateGameIdentity(id: string, ign: string, session?: Session) {
-    return UserModel.findByIdAndUpdate(
-      id,
-      { $set: { ign } },
-      { returnDocument: "after", session },
-    );
-  },
-  updateDisplayNameIfAllowed(
+  updateProfileIfAllowed(
     id: string,
-    displayName: string,
+    profile: {
+      displayName?: string;
+      ign?: string;
+      age?: number;
+      upiId?: string;
+      phoneNumber?: string;
+    },
     cutoff: Date,
     session?: Session,
   ) {
-    return UserModel.findOneAndUpdate(
-      {
-        _id: id,
+    const hasPaymentChanges =
+      profile.upiId !== undefined || profile.phoneNumber !== undefined;
+    const hasGeneralChanges =
+      profile.displayName !== undefined ||
+      profile.ign !== undefined ||
+      profile.age !== undefined;
+    const guards: Record<string, unknown>[] = [{ _id: id }];
+    if (hasGeneralChanges) {
+      guards.push({
         $or: [
-          { displayNameUpdatedAt: { $exists: false } },
-          { displayNameUpdatedAt: null },
-          { displayNameUpdatedAt: { $lte: cutoff } },
+          { updatedAt: { $exists: false } },
+          { updatedAt: null },
+          { updatedAt: { $lte: cutoff } },
         ],
-      },
-      { $set: { displayName, displayNameUpdatedAt: new Date() } },
-      { returnDocument: "after", session },
-    );
-  },
-  updateAgeWithoutChange(id: string, age: number) {
-    const isAdultConfirmed = age >= 18;
+      });
+    }
+    if (hasPaymentChanges) {
+      guards.push({
+        $or: [
+          { paymentDetailUpdateAt: { $exists: false } },
+          { paymentDetailUpdateAt: null },
+          { paymentDetailUpdateAt: { $lte: cutoff } },
+        ],
+      });
+    }
+
     return UserModel.findOneAndUpdate(
-      { _id: id, age },
+      { $and: guards },
       {
         $set: {
-          isAdultConfirmed,
-          ...(isAdultConfirmed ? { adultConfirmationAt: new Date() } : {}),
+          ...profile,
+          ...(hasPaymentChanges ? { paymentDetailUpdateAt: new Date() } : {}),
         },
       },
-      { returnDocument: "after" },
+      {
+        returnDocument: "after",
+        session,
+        timestamps: hasGeneralChanges,
+      },
     );
   },
   updateAgeIfAllowed(id: string, age: number, cutoff: Date) {
-    const isAdultConfirmed = age >= 18;
     return UserModel.findOneAndUpdate(
       {
         _id: id,
         $or: [
-          { ageUpdatedAt: { $exists: false } },
-          { ageUpdatedAt: null },
-          { ageUpdatedAt: { $lte: cutoff } },
+          { updatedAt: { $exists: false } },
+          { updatedAt: null },
+          { updatedAt: { $lte: cutoff } },
         ],
       },
-      {
-        $set: {
-          age,
-          ageUpdatedAt: new Date(),
-          isAdultConfirmed,
-          ...(isAdultConfirmed ? { adultConfirmationAt: new Date() } : {}),
-        },
-      },
+      { $set: { age } },
       { returnDocument: "after" },
     );
   },
-  updatePayoutDetailsIfAllowed(
+  updatePayoutDetailsForAdultIfAllowed(
     id: string,
     upiId: string,
     phoneNumber: string,
@@ -230,15 +193,15 @@ export const userRepository = {
     return UserModel.findOneAndUpdate(
       {
         _id: id,
-        isAdultConfirmed: true,
+        age: { $gte: 18 },
         $or: [
-          { payoutDetailsUpdatedAt: { $exists: false } },
-          { payoutDetailsUpdatedAt: null },
-          { payoutDetailsUpdatedAt: { $lte: cutoff } },
+          { paymentDetailUpdateAt: { $exists: false } },
+          { paymentDetailUpdateAt: null },
+          { paymentDetailUpdateAt: { $lte: cutoff } },
         ],
       },
-      { $set: { upiId, phoneNumber, payoutDetailsUpdatedAt: new Date() } },
-      { returnDocument: "after", session },
+      { $set: { upiId, phoneNumber, paymentDetailUpdateAt: new Date() } },
+      { returnDocument: "after", session, timestamps: false },
     );
   },
   list(filter: Record<string, unknown> = {}, limit = 50) {

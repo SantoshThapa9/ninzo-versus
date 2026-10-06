@@ -7,8 +7,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { createDepositOrder } from "@/services/payment.service";
 import { requestWithdrawal, reviewWithdrawal } from "@/services/withdrawal.service";
 import { updatePlatformSettings } from "@/services/settings.service";
-import { savePlayerIdentity } from "@/services/player-profile.service";
-import { saveAge, savePayoutDetails } from "@/services/upi.service";
+import { saveProfile } from "@/services/player-profile.service";
 import { claimDailyFreeReward } from "@/services/wallet.service";
 
 export async function createDepositAction(coins: number) {
@@ -81,18 +80,15 @@ export async function saveProfileAction(
 ): Promise<SaveProfileState> {
   try {
     const session = await requireSession();
-    await savePlayerIdentity(session.user.id, {
+    const result = await saveProfile(session.user.id, {
       displayName: String(formData.get("displayName") ?? ""),
       ign: String(formData.get("ign") ?? ""),
+      age: String(formData.get("age") ?? ""),
+      upiId: String(formData.get("upiId") ?? ""),
+      phoneNumber: String(formData.get("phoneNumber") ?? ""),
     });
     updateTag("public-open-matches");
     updateTag("global-rankings");
-    const ageResult = await saveAge(session.user.id, formData.get("age"));
-    const upiId = String(formData.get("upiId") ?? "").trim();
-    const phoneNumber = String(formData.get("phoneNumber") ?? "").trim();
-    if (upiId || phoneNumber) {
-      await savePayoutDetails(session.user.id, { upiId, phoneNumber });
-    }
     revalidatePath("/profile");
     revalidatePath("/");
     revalidatePath("/challenges");
@@ -100,8 +96,8 @@ export async function saveProfileAction(
     revalidatePath("/rank");
     return {
       ok: true,
-      age: ageResult.age,
-      message: ageResult.isAdult
+      age: result.age,
+      message: result.age >= 18
         ? "Profile saved. You can now use your UPI ID."
         : "Age saved. UPI is available only to users 18 or older.",
     };

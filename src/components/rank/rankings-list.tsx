@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { Card } from "@/components/ui/card";
 import { getRank, RANK_PAGE_SIZE, type PlayerRank } from "@/lib/rank";
-import { Crown, Medal } from "lucide-react";
+import { Crown } from "lucide-react";
 
 type RankingsListProps = {
   initialPlayers: PlayerRank[];
@@ -48,7 +49,7 @@ export function RankingsList({
           offset: String(offsetRef.current),
           limit: String(RANK_PAGE_SIZE),
         })}`,
-        { signal: AbortSignal.timeout(8_000) },
+        { cache: "no-store", signal: AbortSignal.timeout(8_000) },
       );
       if (!res.ok) throw new Error("Failed to load more rankings");
       const data = (await res.json()) as {
@@ -95,7 +96,7 @@ export function RankingsList({
   return (
     <div className="grid gap-2">
       {players.map((player, index) => {
-        const rank = getRank(player.winRate);
+        const rank = getRank(player.rankScore);
         return (
           <Card key={player.userId} className="flex items-center gap-3 py-3">
             <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/5 text-sm font-extrabold text-[var(--muted)]">
@@ -119,20 +120,23 @@ export function RankingsList({
               <p className="truncate text-xs text-[var(--muted)]">
                 {player.displayName}
               </p>
-              <p className="text-xs text-[var(--muted)]">
-                {player.wins} wins · {player.matches} matches
-              </p>
             </div>
-            <div className="text-right">
-              <p
-                className={`flex items-center justify-end gap-1 text-sm font-extrabold ${rank.className}`}
-              >
-                <Medal size={15} />
-                {player.rank}
-              </p>
-              <p className="mt-0.5 text-xs text-[var(--muted)]">
-                {player.winRate}% win rate
-              </p>
+            <div className="flex shrink-0 items-center gap-2 text-right">
+              <Image
+                src={rank.image}
+                alt=""
+                width={36}
+                height={36}
+                className="size-9 object-contain"
+              />
+              <div>
+                <p className={`text-sm font-extrabold ${rank.className}`}>
+                  {player.rank}
+                </p>
+                <p className="mt-0.5 text-xs text-[var(--muted)]">
+                  {player.rankScore} points
+                </p>
+              </div>
             </div>
           </Card>
         );

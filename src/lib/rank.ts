@@ -1,10 +1,40 @@
 export const RANKS = [
-  { name: "Rookie", minimumWinRate: 0, className: "text-slate-300" },
-  { name: "Elite", minimumWinRate: 50, className: "text-cyan-300" },
-  { name: "Champion", minimumWinRate: 60, className: "text-violet-300" },
-  { name: "Mythic", minimumWinRate: 70, className: "text-fuchsia-300" },
-  { name: "Legend", minimumWinRate: 80, className: "text-amber-300" },
-  { name: "Immortal", minimumWinRate: 90, className: "text-rose-300" },
+  {
+    name: "Rookie",
+    minimumScore: 0,
+    className: "text-slate-300",
+    image: "/ranks/rookie.webp",
+  },
+  {
+    name: "Elite",
+    minimumScore: 15,
+    className: "text-cyan-300",
+    image: "/ranks/elite.webp",
+  },
+  {
+    name: "Champion",
+    minimumScore: 25,
+    className: "text-violet-300",
+    image: "/ranks/champion.webp",
+  },
+  {
+    name: "Mythic",
+    minimumScore: 35,
+    className: "text-fuchsia-300",
+    image: "/ranks/mythic.webp",
+  },
+  {
+    name: "Legend",
+    minimumScore: 45,
+    className: "text-amber-300",
+    image: "/ranks/legend.webp",
+  },
+  {
+    name: "Immortal",
+    minimumScore: 55,
+    className: "text-rose-300",
+    image: "/ranks/immortal.webp",
+  },
 ] as const;
 
 export type RankName = (typeof RANKS)[number]["name"];
@@ -16,19 +46,20 @@ export type PlayerRank = {
   displayName: string;
   ign: string;
   wins: number;
-  losses?: number;
+  losses: number;
   matches: number;
-  winRate: number;
+  rankScore: number;
   rank: RankName;
 };
 
-export function getRank(winRate: number) {
+export function getRank(rankScore: number) {
   return (
-    [...RANKS].reverse().find((rank) => winRate >= rank.minimumWinRate) ??
+    [...RANKS].reverse().find((rank) => rankScore >= rank.minimumScore) ??
     RANKS[0]
   );
 }
 
-export function getWinRate(wins: number, matches: number) {
-  return matches === 0 ? 0 : Math.round((wins / matches) * 100);
+export function getRankScore(wins: number, matches: number) {
+  const losses = Math.max(matches - wins, 0);
+  return Math.max(wins * 10 - losses * 5, 0);
 }

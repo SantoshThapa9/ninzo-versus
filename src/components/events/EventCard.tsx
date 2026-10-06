@@ -57,7 +57,7 @@ export function EventCard({ event }: EventCardProps) {
               <CalendarDays size={15} className="text-[var(--accent)]" />
 
               <span>
-                {new Date(event.eventDate).toLocaleDateString("en-IN", {
+                {new Date().toLocaleDateString("en-IN", {
                   day: "numeric",
                   month: "short",
                 })}

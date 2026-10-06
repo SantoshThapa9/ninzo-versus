@@ -1,6 +1,6 @@
 import { Schema, model, models, type InferSchemaType, type Types } from "mongoose";
 import { ECONOMY_DEFAULTS } from "@/config/defaults";
-import { MatchStatus } from "@/types/enums";
+import { EVENT_ROUNDS, MatchStatus } from "@/types/enums";
 
 const evidenceFailuresField = {
   type: [
@@ -20,6 +20,7 @@ const chatNotificationMutedByField = {
 const MatchSchema = new Schema(
   {
     format: { type: Number, required: true, min: 1, max: 6 },
+    rounds: { type: Number, required: true, enum: [...EVENT_ROUNDS], default: 7 },
     seasonId: { type: Schema.Types.ObjectId, ref: "Season" },
     creatorId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     opponentCaptainId: { type: Schema.Types.ObjectId, ref: "User" },
@@ -81,6 +82,11 @@ if (cachedMatchModel) {
   if (!cachedMatchModel.schema.path("seasonId")) {
     cachedMatchModel.schema.add({
       seasonId: { type: Schema.Types.ObjectId, ref: "Season" },
+    });
+  }
+  if (!cachedMatchModel.schema.path("rounds")) {
+    cachedMatchModel.schema.add({
+      rounds: { type: Number, required: true, enum: [...EVENT_ROUNDS], default: 7 },
     });
   }
   if (!cachedMatchModel.schema.path("chatNotificationMutedBy")) {
