@@ -39,11 +39,11 @@ preserving finalized snapshots, run:
 npm run db:prune-live-season-stats -- --confirm
 ```
 
-The monthly standings snapshot runs hourly on the first UTC day of each month.
-The repeated schedule allows retries while ensuring the previous month's
-standings are snapshotted, top 10 players are awarded 10 NV tokens each, and
-monthly match and win counters are reset only on day 1. Rank Score is calculated
-from settled 1v1 results: wins add 10 points and losses subtract 5 points.
+The monthly standings snapshot runs at 00:01 UTC on the first day of each
+month. It saves the previous month's final rankings, awards 10 NV tokens to
+each of the top 10 players, and resets monthly match and win counters. Rank
+Score is calculated from settled 1v1 results: wins add 10 points and losses
+subtract 5 points.
 
 ## Product language
 
