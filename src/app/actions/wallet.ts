@@ -2,7 +2,7 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { requireAdmin, requireSession } from "@/lib/auth/guards";
-import { toErrorMessage } from "@/lib/errors";
+import { AppError, toErrorMessage } from "@/lib/errors";
 import { rateLimit } from "@/lib/rate-limit";
 import { createDepositOrder } from "@/services/payment.service";
 import {
@@ -13,9 +13,22 @@ import { saveProfile } from "@/services/player-profile.service";
 import { claimDailyFreeReward } from "@/services/wallet.service";
 
 export async function createDepositAction(coins: number) {
-  const session = await requireSession();
-  await rateLimit(`deposit:${session.user.id}`, 8, 60);
-  return createDepositOrder(session.user.id, coins);
+  try {
+    const session = await requireSession();
+    await rateLimit(`deposit:${session.user.id}`, 8, 60);
+    return await createDepositOrder(session.user.id, coins);
+  } catch (error) {
+    console.error("Could not create NV Token deposit.", error);
+    if (
+      error instanceof AppError &&
+      !error.code.startsWith("CASHFREE_")
+    ) {
+      return { error: error.message };
+    }
+    return {
+      error: "Token deposits are temporarily unavailable. Please try again later.",
+    };
+  }
 }
 
 export async function withdrawAction(

@@ -23,7 +23,8 @@ function loadScript() {
     const script = document.createElement("script");
     script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Could not load Cashfree checkout."));
+    script.onerror = () =>
+      reject(new Error("Could not load Cashfree checkout."));
     document.body.appendChild(script);
   });
 }
@@ -50,27 +51,44 @@ export function DepositForm({
       setIsPaying(true);
       await loadScript();
       const order = await createDepositAction(coins);
+      if ("error" in order) {
+        setError(order.error);
+        return;
+      }
       const cashfree = window.Cashfree?.({ mode: order.mode });
-      if (!cashfree) throw new Error("Cashfree checkout could not be initialized.");
+      if (!cashfree) {
+        setError(
+          "Secure checkout is unavailable right now. Please try again later.",
+        );
+        return;
+      }
       const result = await cashfree.checkout({
         paymentSessionId: order.paymentSessionId,
         redirectTarget: "_modal",
       });
       if (result?.error) {
-        throw new Error(result.error.message || "Cashfree checkout was not completed.");
+        setError("Payment was not completed. No tokens were added.");
+        return;
       }
       const response = await fetch("/api/payments/cashfree/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: order.orderId }),
       });
-      const verification = (await response.json()) as { error?: string };
       if (!response.ok) {
-        throw new Error(verification.error || "Payment could not be confirmed yet.");
+        setError(
+          response.status === 409
+            ? "Your payment is still being confirmed. If you were charged, your tokens will appear shortly."
+            : "We couldn't confirm your payment. If you were charged, please check your balance before trying again.",
+        );
+        return;
       }
       window.location.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "NV Token deposit could not be completed");
+      console.error("NV Token deposit checkout failed.", err);
+      setError(
+        "We couldn't complete the token deposit. Please try again. If you were charged, check your balance before paying again.",
+      );
     } finally {
       setIsPaying(false);
     }
@@ -89,12 +107,12 @@ export function DepositForm({
           onChange={(e) => setCoins(Number(e.target.value))}
         />
       </div>
-      <p className="text-sm text-[var(--muted)]">
-        {feePercent > 0
-          ? `${coins} NV Tokens. Processing fee ${feePercent}% (₹${fee.toFixed(2)}). Total ₹${total.toFixed(2)}.`
-          : `${coins} NV Tokens. Total ₹${rupees.toFixed(2)}.`}
-      </p>
-      {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+
+      {error ? (
+        <p role="alert" className="text-sm text-[var(--danger)]">
+          {error}
+        </p>
+      ) : null}
       <Button type="button" size="full" onClick={pay} disabled={isPaying}>
         {isPaying ? "Opening secure checkout..." : "Get More Tokens"}
       </Button>

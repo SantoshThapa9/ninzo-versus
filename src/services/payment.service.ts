@@ -46,9 +46,11 @@ async function cashfreeRequest<T>(
     cache: "no-store",
   });
   if (!response.ok) {
-    const details = await response.text();
+    console.error("Cashfree API request failed.", {
+      status: response.status,
+    });
     throw new AppError(
-      `Cashfree request failed (${response.status})${details ? `: ${details}` : "."}`,
+      "Token deposits are temporarily unavailable. Please try again later.",
       "CASHFREE_REQUEST_FAILED",
       502,
     );
@@ -131,9 +133,11 @@ export async function createDepositOrder(
     }),
   });
   if (!order.ok) {
-    const details = await order.text();
+    console.error("Cashfree could not create a deposit order.", {
+      status: order.status,
+    });
     throw new AppError(
-      `Cashfree could not create the payment session (${order.status})${details ? `: ${details}` : "."}`,
+      "Token deposits are temporarily unavailable. Please try again later.",
       "CASHFREE_ORDER_FAILED",
       502,
     );
@@ -143,8 +147,9 @@ export async function createDepositOrder(
     payment_session_id: string;
   };
   if (!cashfreeOrder.order_id || !cashfreeOrder.payment_session_id) {
+    console.error("Cashfree returned an incomplete payment session.");
     throw new AppError(
-      "Cashfree returned an incomplete payment session.",
+      "Token deposits are temporarily unavailable. Please try again later.",
       "CASHFREE_INVALID_RESPONSE",
       502,
     );
