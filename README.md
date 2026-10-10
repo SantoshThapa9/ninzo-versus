@@ -11,6 +11,16 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Cashfree token deposits
+
+Set `CASHFREE_CLIENT_ID` and `CASHFREE_CLIENT_SECRET` in the server environment.
+Set `CASHFREE_ENV=sandbox` for test credentials or `CASHFREE_ENV=production`
+for live credentials. If omitted, the environment is inferred from the client
+ID prefix. Configure the Cashfree payment webhook to call
+`/api/payments/cashfree/webhook` and subscribe to successful payment events.
+Players must be at least 18 and have a phone number saved in their profile to
+make a deposit.
+
 ## Commands
 
 ```bash

@@ -8,28 +8,38 @@ import { createDepositAction } from "@/app/actions/wallet";
 
 declare global {
   interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
+    Cashfree?: (options: { mode: "sandbox" | "production" }) => {
+      checkout: (options: {
+        paymentSessionId: string;
+        redirectTarget: "_modal";
+      }) => Promise<{ error?: { message?: string } } | undefined>;
+    };
   }
 }
 
 function loadScript() {
   return new Promise<void>((resolve, reject) => {
-    if (window.Razorpay) return resolve();
+    if (window.Cashfree) return resolve();
     const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Could not load Razorpay"));
+    script.onerror = () => reject(new Error("Could not load Cashfree checkout."));
     document.body.appendChild(script);
   });
 }
 
-export function DepositForm({ minCoins, coinsPerRupee, feePercent }: {
+export function DepositForm({
+  minCoins,
+  coinsPerRupee,
+  feePercent,
+}: {
   minCoins: number;
   coinsPerRupee: number;
   feePercent: number;
 }) {
   const [coins, setCoins] = useState(minCoins);
   const [error, setError] = useState("");
+  const [isPaying, setIsPaying] = useState(false);
   const rupees = coins / coinsPerRupee;
   const fee = (rupees * feePercent) / 100;
   const total = rupees + fee;
@@ -37,31 +47,32 @@ export function DepositForm({ minCoins, coinsPerRupee, feePercent }: {
   async function pay() {
     try {
       setError("");
+      setIsPaying(true);
       await loadScript();
       const order = await createDepositAction(coins);
-      const razorpay = new window.Razorpay!({
-        key: order.keyId,
-        amount: order.amountPaise,
-        currency: "INR",
-        order_id: order.orderId,
-        name: "Ninzo Versus",
-        description: `Purchasing NV Tokens for Match Entry: ${order.coins} NV Tokens`,
-        handler: async (response: {
-          razorpay_order_id: string;
-          razorpay_payment_id: string;
-          razorpay_signature: string;
-        }) => {
-          await fetch("/api/payments/razorpay/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(response),
-          });
-          window.location.reload();
-        },
+      const cashfree = window.Cashfree?.({ mode: order.mode });
+      if (!cashfree) throw new Error("Cashfree checkout could not be initialized.");
+      const result = await cashfree.checkout({
+        paymentSessionId: order.paymentSessionId,
+        redirectTarget: "_modal",
       });
-      razorpay.open();
+      if (result?.error) {
+        throw new Error(result.error.message || "Cashfree checkout was not completed.");
+      }
+      const response = await fetch("/api/payments/cashfree/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.orderId }),
+      });
+      const verification = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(verification.error || "Payment could not be confirmed yet.");
+      }
+      window.location.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "NV Token purchase could not be completed");
+      setError(err instanceof Error ? err.message : "NV Token deposit could not be completed");
+    } finally {
+      setIsPaying(false);
     }
   }
 
@@ -80,12 +91,12 @@ export function DepositForm({ minCoins, coinsPerRupee, feePercent }: {
       </div>
       <p className="text-sm text-[var(--muted)]">
         {feePercent > 0
-          ? `Purchasing NV Tokens for Match Entry: ${coins} NV Tokens. Processing fee ${feePercent}% (₹${fee.toFixed(2)}). Total ₹${total.toFixed(2)}.`
-          : `Purchasing NV Tokens for Match Entry: ${coins} NV Tokens. Total ₹${rupees.toFixed(2)}.`}
+          ? `${coins} NV Tokens. Processing fee ${feePercent}% (₹${fee.toFixed(2)}). Total ₹${total.toFixed(2)}.`
+          : `${coins} NV Tokens. Total ₹${rupees.toFixed(2)}.`}
       </p>
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
-      <Button type="button" size="full" onClick={pay}>
-        Purchase NV Tokens for Match Entry
+      <Button type="button" size="full" onClick={pay} disabled={isPaying}>
+        {isPaying ? "Opening secure checkout..." : "Get More Tokens"}
       </Button>
     </div>
   );
