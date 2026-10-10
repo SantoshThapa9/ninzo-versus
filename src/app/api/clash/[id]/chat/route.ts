@@ -9,15 +9,37 @@ import {
 import { notifyMatchChatMessage } from "@/services/push-notification.service";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   ctx: RouteContext<"/api/clash/[id]/chat">,
 ) {
   try {
     const session = await auth();
     if (!session?.user?.id)
       return Response.json({ error: "Unauthorized" }, { status: 401 });
+    const searchParams = new URL(request.url).searchParams;
+    const afterValue = searchParams.get("after");
+    const afterId = searchParams.get("afterId");
+    const hasAfter = searchParams.has("after");
+    const hasAfterId = searchParams.has("afterId");
+    const afterDate = afterValue ? new Date(afterValue) : undefined;
+    if (
+      hasAfter !== hasAfterId ||
+      (hasAfter &&
+        (!afterValue ||
+          !afterId ||
+          !/^[a-f\d]{24}$/i.test(afterId) ||
+          !afterDate ||
+          Number.isNaN(afterDate.getTime())))
+    ) {
+      return Response.json(
+        { error: "Invalid message cursor." },
+        { status: 400 },
+      );
+    }
+    const after =
+      afterDate && afterId ? { createdAt: afterDate, id: afterId } : undefined;
     const { id } = await ctx.params;
-    return Response.json(await getMatchChat(session.user.id, id));
+    return Response.json(await getMatchChat(session.user.id, id, after));
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
     return Response.json({ error: toErrorMessage(error) }, { status });
@@ -41,13 +63,14 @@ export async function POST(
       payload.body ?? "",
     );
     const { recipientId, recipientHasMutedChat, ...publicMessage } = message;
-    if (!recipientHasMutedChat) {
+    if (!recipientHasMutedChat && !message.senderOnly) {
       // Notification delivery is intentionally best-effort: a sent message
       // must never fail because a recipient revoked their push permission.
       void notifyMatchChatMessage(
         recipientId,
         message.senderName,
         id,
+        String(message._id),
         message.body,
       ).catch((error) =>
         console.error("[push] Failed to queue match chat notification.", {

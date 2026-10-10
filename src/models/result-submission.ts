@@ -3,9 +3,8 @@ import { EvidenceKind } from "@/types/enums";
 
 const AiAnalysisSchema = new Schema(
   {
-    roomId: String,
-    winnerIGN: String,
-    confidence: Number,
+    result: { type: String, enum: ["VICTORY", "DEFEAT", "UNREADABLE"] },
+    extractionFailed: { type: Boolean, default: false },
     raw: Schema.Types.Mixed,
   },
   { _id: false },

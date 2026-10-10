@@ -3,15 +3,10 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { listOpenMatches } from "@/services/match.service";
 import { listPublicEvents } from "@/services/event.service";
-import { getPlatformSettings } from "@/services/settings.service";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { connectDb } from "@/lib/db/mongoose";
-import { userRepository } from "@/repositories/user.repository";
 import { ChevronRight, Coins, Swords, Trophy } from "lucide-react";
 import { EventCard } from "@/components/events/EventCard";
-
-import { getDailyFreeRewardStatus } from "@/services/wallet.service";
 
 const getHomeSession = cache(async () => auth());
 
@@ -24,23 +19,7 @@ function HomeSectionFallback({ height = "h-24" }: { height?: string }) {
   );
 }
 
-async function HomeAccountSummary() {
-  const session = await getHomeSession();
-  const userId = session?.user?.id;
-  const [user, dailyReward] = userId
-    ? await Promise.all([
-        connectDb().then(() => userRepository.findById(userId)),
-        getDailyFreeRewardStatus(userId),
-      ])
-    : [null, null];
-  const nextRewardDay = new Date();
-  nextRewardDay.setUTCDate(nextRewardDay.getUTCDate() + 1);
-  const nextRewardLabel = nextRewardDay.toLocaleDateString("en-IN", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-
+function HomeAccountSummary() {
   return (
     <div className="sr-only">
       <h2>Ninzo Versus</h2>
@@ -154,10 +133,7 @@ async function OpenChallenges() {
 }
 
 async function PublicEvents() {
-  const [events, settings] = await Promise.all([
-    listPublicEvents(),
-    getPlatformSettings(),
-  ]);
+  const [events] = await Promise.all([listPublicEvents()]);
   return (
     <>
       {events.length === 0 ? (

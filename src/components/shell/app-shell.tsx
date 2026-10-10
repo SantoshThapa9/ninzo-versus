@@ -5,6 +5,7 @@ import { AppTour } from "@/components/onboarding/app-tour";
 import { RankRouteRefresh } from "@/components/shell/rank-route-refresh";
 import styles from "./app-shell.module.scss";
 import Image from "next/image";
+import { ScrollText } from "lucide-react";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -16,16 +17,11 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           NINZO VERSUS
         </Link>
         <nav className={styles.meta} aria-label="Utility navigation">
-          <Link
-            href="/competition-policy"
-            prefetch={false}
-            className={styles.admin}
-          >
-            <Image
-              src="/policy.webp"
-              alt="Competition Policy"
-              width={20}
-              height={20}
+          <Link href="/competition-policy" prefetch={false}>
+            <ScrollText
+              height={16}
+              width={16}
+              className="text-[var(--muted)]"
             />
           </Link>
           <AdminLink />

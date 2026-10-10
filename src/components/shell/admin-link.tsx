@@ -11,7 +11,8 @@ export function AdminLink() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    fetch("/api/auth/session", { signal: AbortSignal.timeout(4_000) })
+    const controller = new AbortController();
+    fetch("/api/auth/session", { signal: controller.signal })
       .then((response) => {
         if (!response.ok) {
           throw new Error(`Session request failed with ${response.status}.`);
@@ -20,9 +21,11 @@ export function AdminLink() {
       })
       .then((session: SessionResponse) => setIsAdmin(session?.user?.role === UserRole.ADMIN))
       .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
         console.error("[navigation] Could not load the current session.", error);
         setIsAdmin(false);
       });
+    return () => controller.abort();
   }, []);
 
   return isAdmin ? (

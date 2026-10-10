@@ -7,12 +7,24 @@ import { eventRepository } from "@/repositories/event.repository";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EventStatus } from "@/types/enums";
 
 export default async function AdminEventsPage() {
   const session = await auth();
   if (session?.user?.role !== UserRole.ADMIN) redirect("/");
   await connectDb();
-  const events = await eventRepository.listAll();
+  const events = await eventRepository.listAll({
+    status: {
+      $in: [
+        EventStatus.DRAFT,
+        EventStatus.PUBLISHED,
+        EventStatus.REGISTRATION_OPEN,
+        EventStatus.LIVE,
+        EventStatus.RESULT_REVIEW,
+        EventStatus.COMPLETED,
+      ],
+    },
+  });
 
   return (
     <div className="grid gap-4">

@@ -23,6 +23,28 @@ export const matchRepository = {
   updateById(id: string, update: Record<string, unknown>) {
     return MatchModel.updateOne({ _id: id }, update).exec();
   },
+  addEvidenceSubmission(
+    matchId: string,
+    deadlineAt: Date,
+    now: Date,
+    session: Session,
+  ) {
+    return MatchModel.updateOne(
+      {
+        _id: matchId,
+        status: "awaiting_evidence",
+        $or: [
+          { evidenceDeadlineAt: { $exists: false } },
+          { evidenceDeadlineAt: { $gt: now } },
+        ],
+      },
+      {
+        $min: { evidenceDeadlineAt: deadlineAt },
+        $inc: { evidenceSubmissionVersion: 1 },
+      },
+      { session },
+    ).exec();
+  },
   listOpen() {
     return MatchModel.find({ status: "open" })
       .select("_id creatorId creatorIgn format rounds stakeMin stakeMax rules")
@@ -39,6 +61,26 @@ export const matchRepository = {
       .maxTimeMS(8_000)
       .lean();
   },
+  listActiveForNotifications(userId: string) {
+    return MatchModel.find({
+      $or: [{ creatorId: userId }, { opponentCaptainId: userId }],
+      status: {
+        $in: [
+          "accepted",
+          "live",
+          "awaiting_evidence",
+          "analyzing",
+          "result_review",
+          "disputed",
+        ],
+      },
+    })
+      .select("_id chatNotificationMutedBy")
+      .sort({ updatedAt: -1 })
+      .limit(30)
+      .maxTimeMS(8_000)
+      .lean();
+  },
   listPreviousForUser(userId: string) {
     const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     return MatchModel.find({
@@ -47,6 +89,26 @@ export const matchRepository = {
       completedAt: { $gte: cutoff },
     })
       .sort({ completedAt: -1, createdAt: -1 })
+      .lean();
+  },
+  listExpiredEvidenceDeadlines(now: Date, limit = 100) {
+    return MatchModel.find({
+      $or: [
+        {
+          status: { $in: ["awaiting_evidence", "analyzing"] },
+          evidenceDeadlineAt: { $lte: now },
+        },
+        {
+          status: "disputed",
+          aiWinnerRecommendation: {
+            $regex: "^Deadline expired: lone VICTORY",
+          },
+        },
+      ],
+    })
+      .select("_id")
+      .sort({ evidenceDeadlineAt: 1 })
+      .limit(limit)
       .lean();
   },
   list(filter: Record<string, unknown>, limit = 80) {

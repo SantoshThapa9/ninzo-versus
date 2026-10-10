@@ -3,12 +3,15 @@ import { SupportMessageModel } from "@/models/support-message";
 import { SupportEvidenceModel } from "@/models/support-evidence";
 import { DisputeModel } from "@/models/dispute";
 import { ResultSubmissionModel } from "@/models/result-submission";
-import { MatchEvidenceAttemptModel } from "@/models/match-evidence-attempt";
 import { AuditLogModel } from "@/models/audit-log";
-import { AIConfigurationModel } from "@/models/ai-configuration";
 import { VerifiedRoomIdModel } from "@/models/verified-room-id";
 import type { ClientSession } from "mongoose";
-import type { ReportType, SupportStatus, TicketSender, EvidenceKind } from "@/types/enums";
+import type {
+  ReportType,
+  TicketSender,
+  EvidenceKind,
+} from "@/types/enums";
+import { SupportStatus } from "@/types/enums";
 
 export const supportRepository = {
   createTicket(data: {
@@ -26,21 +29,41 @@ export const supportRepository = {
     return SupportTicketModel.findById(id);
   },
   listForUser(userId: string) {
-    return SupportTicketModel.find({ userId, source: "manual" }).sort({ updatedAt: -1 }).lean();
-  },
-  listAdmin(status?: SupportStatus) {
-    return SupportTicketModel.find({ source: "manual", ...(status ? { status } : {}) })
+    return SupportTicketModel.find({ userId, source: "manual" })
       .sort({ updatedAt: -1 })
       .lean();
   },
-  addMessage(data: { ticketId: string; sender: TicketSender; body: string; senderId?: string }) {
+  listAdmin(status?: SupportStatus) {
+    return SupportTicketModel.find({
+      source: "manual",
+      status: status ?? {
+        $in: [
+          SupportStatus.AI_ACTIVE,
+          SupportStatus.PENDING_ADMIN,
+          SupportStatus.ADMIN_ACTIVE,
+        ],
+      },
+    })
+      .sort({ updatedAt: -1 })
+      .limit(100)
+      .maxTimeMS(8_000)
+      .lean();
+  },
+  addMessage(data: {
+    ticketId: string;
+    sender: TicketSender;
+    body: string;
+    senderId?: string;
+  }) {
     return SupportMessageModel.create(data);
   },
   listMessages(ticketId: string) {
     return SupportMessageModel.find({ ticketId }).sort({ createdAt: 1 }).lean();
   },
   listEvidence(ticketId: string) {
-    return SupportEvidenceModel.find({ ticketId }).sort({ createdAt: 1 }).lean();
+    return SupportEvidenceModel.find({ ticketId })
+      .sort({ createdAt: 1 })
+      .lean();
   },
   addEvidence(data: {
     ticketId: string;
@@ -64,17 +87,70 @@ export const resultRepository = {
     blobPathname: string;
     expiresAt?: Date;
     aiAnalysis?: unknown;
-  }) {
-    return ResultSubmissionModel.create(data);
+  }, session?: ClientSession) {
+    return ResultSubmissionModel.create([data], { session }).then(
+      ([submission]) => submission,
+    );
   },
-  listForMatch(matchId: string) {
-    return ResultSubmissionModel.find({ matchId }).sort({ createdAt: -1 }).lean();
+  listForMatch(matchId: string, session?: ClientSession) {
+    return ResultSubmissionModel.find({ matchId }).session(session ?? null)
+      .sort({ createdAt: -1 })
+      .lean();
   },
-  countForMatchUserKind(matchId: string, userId: string, kind: EvidenceKind) {
-    return ResultSubmissionModel.countDocuments({ matchId, userId, kind });
+  listForMatches(matchIds: string[]) {
+    if (matchIds.length === 0) return Promise.resolve([]);
+    return ResultSubmissionModel.find({ matchId: { $in: matchIds } })
+      .sort({ createdAt: -1 })
+      .maxTimeMS(8_000)
+      .lean();
+  },
+  countForMatchUserKind(
+    matchId: string,
+    userId: string,
+    kind: EvidenceKind,
+    session?: ClientSession,
+  ) {
+    return ResultSubmissionModel.countDocuments({ matchId, userId, kind }).session(
+      session ?? null,
+    );
   },
   setAiAnalysis(id: string, aiAnalysis: unknown) {
-    return ResultSubmissionModel.findByIdAndUpdate(id, { $set: { aiAnalysis } }, { returnDocument: "after" });
+    return ResultSubmissionModel.findByIdAndUpdate(
+      id,
+      { $set: { aiAnalysis } },
+      // The result-only analysis schema replaced the former room/IGN schema.
+      // In Next dev, Mongoose may retain the former compiled model during a
+      // hot reload; strict mode would then silently discard `aiAnalysis.result`.
+      // Keep this transition write schema-agnostic, while consumers still
+      // validate the only accepted result values in parseScreenshotResult.
+      { returnDocument: "after", strict: false },
+    );
+  },
+  markUnanalyzedAsUnavailable(matchId: string, session?: ClientSession) {
+    return ResultSubmissionModel.updateMany(
+      {
+        matchId,
+        kind: "post_match_result",
+        aiAnalysis: { $exists: false },
+      },
+      { $set: { aiAnalysis: { result: "UNREADABLE", extractionFailed: true } } },
+    ).session(session ?? null);
+  },
+  retainForAdminReview(matchId: string, session?: ClientSession) {
+    return ResultSubmissionModel.updateMany(
+      { matchId },
+      { $set: { retainForDispute: true }, $unset: { expiresAt: 1 } },
+    ).session(session ?? null);
+  },
+  releaseAdminReviewRetention(
+    matchId: string,
+    expiresAt: Date,
+    session?: ClientSession,
+  ) {
+    return ResultSubmissionModel.updateMany(
+      { matchId },
+      { $set: { retainForDispute: false, expiresAt } },
+    ).session(session ?? null);
   },
   deleteManyForMatch(matchId: string) {
     return ResultSubmissionModel.deleteMany({ matchId });
@@ -87,23 +163,11 @@ export const resultRepository = {
   },
 };
 
-export const evidenceAttemptRepository = {
-  recordFailure(data: { matchId: string; userId: string; reason: string }) {
-    return MatchEvidenceAttemptModel.create(data);
-  },
-  countFailures(matchId: string, userId: string) {
-    return MatchEvidenceAttemptModel.countDocuments({ matchId, userId });
-  },
-};
-
 export const verifiedRoomIdRepository = {
   find(roomId: string) {
     return VerifiedRoomIdModel.findOne({ roomId }).lean();
   },
-  create(
-    data: { roomId: string; matchId: string },
-    session?: ClientSession,
-  ) {
+  create(data: { roomId: string; matchId: string }, session?: ClientSession) {
     return VerifiedRoomIdModel.create([data], { session }).then(
       ([record]) => record,
     );
@@ -113,6 +177,9 @@ export const verifiedRoomIdRepository = {
 export const disputeRepository = {
   create(data: Record<string, unknown>) {
     return DisputeModel.create(data);
+  },
+  deleteForTicket(ticketId: string, session?: ClientSession) {
+    return DisputeModel.deleteMany({ ticketId }).session(session ?? null);
   },
   listOpen() {
     return DisputeModel.find({ status: "open" }).sort({ createdAt: -1 }).lean();
@@ -126,23 +193,12 @@ export const auditRepository = {
     entityType: string;
     entityId: string;
     metadata?: unknown;
-  }) {
-    return AuditLogModel.create(data);
+  }, session?: ClientSession) {
+    return AuditLogModel.create([data], { session }).then(
+      ([record]) => record,
+    );
   },
   list(limit = 100) {
     return AuditLogModel.find().sort({ createdAt: -1 }).limit(limit).lean();
-  },
-};
-
-export const settingsRepository = {
-  getGlobal() {
-    return AIConfigurationModel.findOne({ key: "global" });
-  },
-  upsertGlobal(data: Record<string, unknown>) {
-    return AIConfigurationModel.findOneAndUpdate(
-      { key: "global" },
-      { $set: data },
-      { returnDocument: "after", upsert: true },
-    );
   },
 };

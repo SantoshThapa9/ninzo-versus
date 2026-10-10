@@ -9,37 +9,71 @@ type IncomingMessage = {
   matchId: string;
   senderName: string;
   body: string;
+  createdAt: string;
   url?: string;
 };
-type SupportReply = { id: string; ticketId: string; body: string };
+type SupportReply = {
+  id: string;
+  ticketId: string;
+  body: string;
+  createdAt: string;
+};
+const POLL_INTERVAL_MS = 30_000;
+const MAX_NOTIFICATIONS_PER_POLL = 3;
 
-function playMessageSound() {
+let messageAudioContext: AudioContext | undefined;
+
+function getMessageAudioContext() {
+  const AudioContextConstructor =
+    window.AudioContext ||
+    (window as typeof window & {
+      webkitAudioContext?: typeof AudioContext;
+    }).webkitAudioContext;
+  if (!AudioContextConstructor) return undefined;
+  messageAudioContext ??= new AudioContextConstructor();
+  return messageAudioContext;
+}
+
+function unlockMessageSound() {
   try {
-    const AudioContextConstructor =
-      window.AudioContext ||
-      (window as typeof window & {
-        webkitAudioContext?: typeof AudioContext;
-      }).webkitAudioContext;
-    if (!AudioContextConstructor) return;
-    const context = new AudioContextConstructor();
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.frequency.setValueAtTime(740, context.currentTime);
-    oscillator.frequency.setValueAtTime(940, context.currentTime + 0.12);
-    gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.32);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.33);
-    oscillator.addEventListener("ended", () => void context.close());
+    const context = getMessageAudioContext();
+    if (context?.state === "suspended") void context.resume();
   } catch {
     // Browser audio permissions are best-effort and must not interrupt polling.
   }
 }
 
-function showBrowserMessageNotification(message: IncomingMessage) {
-  if (Notification.permission !== "granted" || !("serviceWorker" in navigator)) {
+function playMessageSound() {
+  try {
+    const context = getMessageAudioContext();
+    if (!context || context.state !== "running") return;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(740, context.currentTime);
+    oscillator.frequency.setValueAtTime(940, context.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.4, context.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.32);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.33);
+  } catch {
+    // Browser audio permissions are best-effort and must not interrupt polling.
+  }
+}
+
+function showBrowserMessageNotification(message: {
+  matchId: string;
+  senderName: string;
+  body: string;
+  url?: string;
+}) {
+  if (
+    !("Notification" in window) ||
+    Notification.permission !== "granted" ||
+    !("serviceWorker" in navigator)
+  ) {
     return;
   }
   void navigator.serviceWorker.ready
@@ -48,9 +82,11 @@ function showBrowserMessageNotification(message: IncomingMessage) {
         body: message.body,
         icon: "/nv.jpg",
         badge: "/nv.ico",
-        // A distinct tag keeps every incoming message visible instead of
-        // replacing the previous notification from the same Clash.
-        tag: `clash-chat-${message.id}`,
+        tag: message.url?.startsWith("/support/")
+          ? `support-reply-${message.matchId}`
+          : `clash-chat-${message.matchId}`,
+        silent: false,
+        requireInteraction: false,
         data: { url: message.url ?? `/clash/${message.matchId}` },
       }),
     )
@@ -76,11 +112,20 @@ export function ChatNotificationListener() {
   }, [pathname]);
 
   useEffect(() => {
+    document.addEventListener("pointerdown", unlockMessageSound);
+    document.addEventListener("keydown", unlockMessageSound);
+    return () => {
+      document.removeEventListener("pointerdown", unlockMessageSound);
+      document.removeEventListener("keydown", unlockMessageSound);
+    };
+  }, []);
+
+  useEffect(() => {
     const load = async () => {
       if (document.visibilityState !== "visible" || polling.current) return;
       polling.current = true;
       try {
-        const signal = AbortSignal.timeout(5_000);
+        const signal = AbortSignal.timeout(20_000);
         const [response, supportResponse] = await Promise.all([
           fetch("/api/notifications/chat", {
             cache: "no-store",
@@ -112,21 +157,30 @@ export function ChatNotificationListener() {
         if (!initialized.current) {
           messages.forEach((message) => seenMessageIds.current.add(message.id));
           initialized.current = true;
-          return;
-        }
-        for (const message of messages.reverse()) {
-          if (seenMessageIds.current.has(message.id)) continue;
-          seenMessageIds.current.add(message.id);
-          if (pathnameRef.current === `/clash/${message.matchId}`) continue;
-          toast(`${message.senderName} sent a message`, {
-            description: message.body,
-            action: {
-              label: "Open chat",
-              onClick: () => router.push(`/clash/${message.matchId}`),
-            },
-          });
-          showBrowserMessageNotification(message);
-          playMessageSound();
+        } else {
+          const latestByMatch = new Map<string, IncomingMessage>();
+          for (const message of messages.reverse()) {
+            if (seenMessageIds.current.has(message.id)) continue;
+            seenMessageIds.current.add(message.id);
+            latestByMatch.set(message.matchId, message);
+          }
+          const latestMessages = [...latestByMatch.values()]
+            .sort(
+              (left, right) =>
+                Date.parse(left.createdAt) - Date.parse(right.createdAt),
+            )
+            .slice(-MAX_NOTIFICATIONS_PER_POLL);
+          for (const message of latestMessages) {
+            toast(`${message.senderName} sent a message`, {
+              description: message.body,
+              action: {
+                label: "Open chat",
+                onClick: () => router.push(`/clash/${message.matchId}`),
+              },
+            });
+            showBrowserMessageNotification(message);
+            playMessageSound();
+          }
         }
 
         const supportReplies = supportData.messages ?? [];
@@ -135,27 +189,36 @@ export function ChatNotificationListener() {
             seenSupportReplyIds.current.add(reply.id),
           );
           supportInitialized.current = true;
-          return;
-        }
-        for (const reply of supportReplies.reverse()) {
-          if (seenSupportReplyIds.current.has(reply.id)) continue;
-          seenSupportReplyIds.current.add(reply.id);
-          if (pathnameRef.current === `/support/${reply.ticketId}`) continue;
-          toast("Ninzo Support replied", {
-            description: reply.body,
-            action: {
-              label: "Open ticket",
-              onClick: () => router.push(`/support/${reply.ticketId}`),
-            },
-          });
-          showBrowserMessageNotification({
-            id: `support-${reply.id}`,
-            matchId: reply.ticketId,
-            senderName: "Ninzo Support",
-            body: reply.body,
-            url: `/support/${reply.ticketId}`,
-          });
-          playMessageSound();
+        } else {
+          const latestByTicket = new Map<string, SupportReply>();
+          for (const reply of supportReplies.reverse()) {
+            if (seenSupportReplyIds.current.has(reply.id)) continue;
+            seenSupportReplyIds.current.add(reply.id);
+            latestByTicket.set(reply.ticketId, reply);
+          }
+          const latestReplies = [...latestByTicket.values()]
+            .sort(
+              (left, right) =>
+                Date.parse(left.createdAt) - Date.parse(right.createdAt),
+            )
+            .slice(-MAX_NOTIFICATIONS_PER_POLL);
+          for (const reply of latestReplies) {
+            if (pathnameRef.current === `/support/${reply.ticketId}`) continue;
+            toast("Ninzo Support replied", {
+              description: reply.body,
+              action: {
+                label: "Open ticket",
+                onClick: () => router.push(`/support/${reply.ticketId}`),
+              },
+            });
+            showBrowserMessageNotification({
+              matchId: reply.ticketId,
+              senderName: "Ninzo Support",
+              body: reply.body,
+              url: `/support/${reply.ticketId}`,
+            });
+            playMessageSound();
+          }
         }
       } catch (error) {
         if (Date.now() - lastPollingErrorAt.current >= 60_000) {
@@ -171,8 +234,15 @@ export function ChatNotificationListener() {
     };
 
     void load();
-    const timer = window.setInterval(() => void load(), 10_000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => void load(), POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [router]);
 
   return null;

@@ -1,90 +1,54 @@
+import { BLOCKED_WORDS_TEXT } from "@/config/defaults";
+
 const RESPECT_WARNING = "Please be respectful or your account will be banned.";
 
 export const MUTED_CHAT_BODY = "Message muted";
 
-/** Whole-word only — these also appear inside ordinary English. */
-const SHORT_TERMS = ["abe", "abey", "sale", "saale", "salle"];
+// Convert the text into a Set once when this module loads.
+const BLOCKED_WORDS = new Set(
+  BLOCKED_WORDS_TEXT.toLowerCase()
+    .split(/[,\s]+/)
+    .filter(Boolean),
+);
 
-const COMPACT_TERMS = [
-  "maderchod",
-  "madarchod",
-  "madrchod",
-  "madarchoud",
-  "motherchod",
-  "randi",
-  "rande",
-  "randwa",
-  "kutte",
-  "kutta",
-  "vosri",
-  "vosdi",
-  "bhosdi",
-  "bhosdike",
-  "bhosadi",
-  "bhosadike",
-  "boor",
-  "fuck",
-  "fck",
-  "fuk",
-  "fucker",
-  "fucking",
-  "vagina",
-  "chut",
-  "choot",
-  "chutiya",
-  "land",
-  "laude",
-  "lauda",
-  "laura",
-  "laure",
-];
+export function isAbusiveChatMessage(text: string): boolean {
+  let start = -1;
 
-function fold(text: string) {
-  return text
-    .toLocaleLowerCase()
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .replace(/[4@]/g, "a")
-    .replace(/[0]/g, "o")
-    .replace(/[1!]/g, "i")
-    .replace(/[3]/g, "e")
-    .replace(/[$5]/g, "s");
+  for (let i = 0; i <= text.length; i++) {
+    const code = i < text.length ? text.charCodeAt(i) : 32;
+
+    const isWordChar =
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122) ||
+      (code >= 48 && code <= 57) ||
+      code === 95;
+
+    if (isWordChar) {
+      if (start === -1) start = i;
+    } else if (start !== -1) {
+      if (BLOCKED_WORDS.has(text.slice(start, i).toLowerCase())) {
+        return true;
+      }
+
+      start = -1;
+    }
+  }
+
+  return false;
 }
 
-function compactLetters(text: string) {
-  return fold(text).replace(/[^a-z]/g, "");
-}
-
-function collapseRepeats(text: string) {
-  return text.replace(/(.)\1+/g, "$1");
-}
-
-function hasWholeWord(folded: string, term: string) {
-  const pattern = new RegExp(`(?:^|[^a-z])${term}(?:[^a-z]|$)`);
-  return pattern.test(folded);
-}
-
-export function isAbusiveChatMessage(text: string) {
-  const folded = fold(text);
-  if (SHORT_TERMS.some((term) => hasWholeWord(folded, term))) return true;
-
-  const compact = compactLetters(text);
-  const collapsed = collapseRepeats(compact);
-  return COMPACT_TERMS.some((term) => {
-    const collapsedTerm = collapseRepeats(term);
-    return compact.includes(term) || collapsed.includes(collapsedTerm);
-  });
-}
-
-export function isMutedChatMessage(text: string) {
+export function isMutedChatMessage(text: string): boolean {
   return text === MUTED_CHAT_BODY || isAbusiveChatMessage(text);
 }
 
-export function publicChatBody(text: string) {
+export function publicChatBody(text: string): string {
   return isAbusiveChatMessage(text) ? MUTED_CHAT_BODY : text;
 }
 
-export function isSenderOnlyChatMessage(body: string, senderOnly?: boolean) {
+export function isSenderOnlyChatMessage(
+  body: string,
+  senderOnly?: boolean,
+): boolean {
   return Boolean(senderOnly) || isMutedChatMessage(body);
 }
 

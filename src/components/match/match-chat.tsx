@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ActionForm } from "@/components/forms/action-form";
 import { confirmMatchCompletedAction } from "@/app/actions/match";
+import { MATCH_EVIDENCE_DEADLINE_MS } from "@/config/defaults";
 import {
   isAbusiveChatMessage,
   isMutedChatMessage,
@@ -48,53 +49,83 @@ export function MatchChat({
   const [expiresAt, setExpiresAt] = useState<string>();
   const [closed, setClosed] = useState(false);
   const [matchStatus, setMatchStatus] = useState("");
-  const [result, setResult] = useState<"win" | "loss" | "hold">();
+  const [result, setResult] = useState<
+    "win" | "loss" | "hold" | "unreadable"
+  >();
   const [evidence, setEvidence] = useState<Evidence[]>([]);
+  const [bothScreenshotsUploaded, setBothScreenshotsUploaded] = useState(false);
   const [screenshot, setScreenshot] = useState<File>();
   const [screenshotName, setScreenshotName] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [analyzingScreenshot, setAnalyzingScreenshot] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [roomIdRetryRequired, setRoomIdRetryRequired] = useState(false);
   const [respectWarning, setRespectWarning] = useState(false);
-  const [failedUploadAttempts, setFailedUploadAttempts] = useState(0);
   const [chatNotificationsMuted, setChatNotificationsMuted] = useState(false);
   const [updatingNotificationMute, setUpdatingNotificationMute] =
     useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [evidenceDeadlineAt, setEvidenceDeadlineAt] = useState<string>();
+  const [deadlineOutcome, setDeadlineOutcome] = useState<string>();
   const transcriptRef = useRef<HTMLDivElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
   const previewUrlRef = useRef<string | undefined>(undefined);
   const sendingRef = useRef(false);
   const loadingRef = useRef(false);
+  const messagesRef = useRef<Message[]>([]);
+  const afterCursorRef = useRef<{ createdAt: string; id: string } | undefined>(
+    undefined,
+  );
   const load = useCallback(async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     try {
-      const response = await fetch(`/api/clash/${matchId}/chat`, {
+      const afterCursor = afterCursorRef.current;
+      const cursor = afterCursor
+        ? `?after=${encodeURIComponent(afterCursor.createdAt)}&afterId=${afterCursor.id}`
+        : "";
+      const response = await fetch(`/api/clash/${matchId}/chat${cursor}`, {
         cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
       });
       const data = (await response.json()) as {
         messages?: Message[];
         expiresAt?: string;
         closed?: boolean;
         matchStatus?: string;
-        result?: "win" | "loss" | "hold";
+        result?: "win" | "loss" | "hold" | "unreadable";
         evidence?: Evidence[];
-        failedUploadAttempts?: number;
+        bothScreenshotsUploaded?: boolean;
+        evidenceDeadlineAt?: string;
+        deadlineOutcome?: string;
         chatNotificationsMuted?: boolean;
         error?: string;
       };
       if (!response.ok) return setStatus(data.error ?? "Unable to load chat.");
-      setMessages(
-        (data.messages ?? []).filter((message) => {
-          if (message.senderId === currentUserId) return true;
-          return !isMutedChatMessage(message.body);
-        }),
+      const fetchedMessages = data.messages ?? [];
+      const latestFetchedMessage = fetchedMessages[fetchedMessages.length - 1];
+      if (latestFetchedMessage) {
+        afterCursorRef.current = {
+          createdAt: latestFetchedMessage.createdAt,
+          id: latestFetchedMessage._id,
+        };
+      }
+      const incomingMessages = fetchedMessages.filter((message) => {
+        if (message.senderId === currentUserId) return true;
+        return !isMutedChatMessage(message.body);
+      });
+      const messagesById = new Map(
+        messagesRef.current.map((message) => [message._id, message]),
       );
+      incomingMessages.forEach((message) =>
+        messagesById.set(message._id, message),
+      );
+      messagesRef.current = [...messagesById.values()].sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
+      setMessages(messagesRef.current);
       setExpiresAt(data.expiresAt);
       setClosed(Boolean(data.closed));
       setMatchStatus(data.matchStatus ?? "");
@@ -102,7 +133,9 @@ export function MatchChat({
         typeof data.result === "undefined" ? current : data.result,
       );
       setEvidence(data.evidence ?? []);
-      setFailedUploadAttempts(data.failedUploadAttempts ?? 0);
+      setBothScreenshotsUploaded(Boolean(data.bothScreenshotsUploaded));
+      setEvidenceDeadlineAt(data.evidenceDeadlineAt);
+      setDeadlineOutcome(data.deadlineOutcome);
       setChatNotificationsMuted(Boolean(data.chatNotificationsMuted));
       setStatus("");
     } catch {
@@ -118,14 +151,21 @@ export function MatchChat({
     // tabs so it does not generate needless Atlas reads.
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void load();
-    }, 2000);
+    }, 1500);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       window.clearTimeout(initialLoad);
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [load]);
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    // The evidence deadline is a real countdown for both players, so keep the
+    // display accurate to the second once either player completes the match.
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
   useEffect(() => {
@@ -166,7 +206,20 @@ export function MatchChat({
         return;
       }
       setBody("");
-      if (data.message) setMessages((current) => [...current, data.message!]);
+      if (data.message) {
+        messagesRef.current = [...messagesRef.current, data.message];
+        setMessages(messagesRef.current);
+        if (
+          !afterCursorRef.current ||
+          new Date(data.message.createdAt).getTime() >=
+            new Date(afterCursorRef.current.createdAt).getTime()
+        ) {
+          afterCursorRef.current = {
+            createdAt: data.message.createdAt,
+            id: data.message._id,
+          };
+        }
+      }
       void load();
     } catch {
       setStatus("Unable to send message. Please try again.");
@@ -216,14 +269,7 @@ export function MatchChat({
       return;
     }
     setUploading(true);
-    setAnalyzingScreenshot(false);
     setStatus("Uploading screenshot…");
-    // Uploads usually finish before OCR starts. If the request remains active,
-    // make the potentially longer AI analysis phase explicit to the player.
-    const analysisIndicatorTimer = window.setTimeout(
-      () => setAnalyzingScreenshot(true),
-      800,
-    );
     const form = new FormData();
     form.set("file", screenshot);
     form.set("purpose", "evidence");
@@ -232,48 +278,43 @@ export function MatchChat({
     let response: Response;
     let data: {
       error?: string;
-      result?: "win" | "loss";
-      failedUploadAttempts?: number;
+      result?: "win" | "loss" | "unreadable";
     };
     try {
       response = await fetch("/api/upload", { method: "POST", body: form });
       data = (await response.json()) as {
         error?: string;
-        result?: "win" | "loss";
+        result?: "win" | "loss" | "unreadable";
       };
+    } catch {
+      setUploadError(
+        "The upload response was lost. Refresh the page to check whether your screenshot was saved.",
+      );
+      void load();
+      return;
     } finally {
-      window.clearTimeout(analysisIndicatorTimer);
       setUploading(false);
-      setAnalyzingScreenshot(false);
     }
     if (!response.ok) {
-      if (typeof data.failedUploadAttempts === "number") {
-        setFailedUploadAttempts(data.failedUploadAttempts);
-      }
-      const roomIdMismatch = data.error === "Can't find detail, upload again.";
-      if (roomIdMismatch) {
-        setResult(undefined);
-        setStatus("");
-        setRoomIdRetryRequired(true);
-      }
       selectScreenshot(undefined);
       setPreviewOpen(false);
       if (screenshotInputRef.current) screenshotInputRef.current.value = "";
       void load();
       return setUploadError(
         data.error ??
-          "We couldn't read the screenshot. Please upload a clear final-result image again.",
+          "The screenshot could not be saved. Please contact an administrator if this continues.",
       );
     }
     selectScreenshot(undefined);
     setPreviewOpen(false);
     if (screenshotInputRef.current) screenshotInputRef.current.value = "";
-    setRoomIdRetryRequired(false);
     if (data.result) {
       setResult(data.result);
       setStatus("");
     } else {
-      setStatus("");
+      setStatus(
+        "Screenshot saved. Result verification is continuing; an administrator will review it if needed.",
+      );
     }
     void load();
   }
@@ -284,9 +325,46 @@ export function MatchChat({
       : "Chat expired";
   const expired = Boolean(expiresAt && millisecondsLeft <= 0);
   const myEvidence = evidence.filter((item) => item.userId === currentUserId);
+  const evidenceDeadlineMillis = evidenceDeadlineAt
+    ? new Date(evidenceDeadlineAt).getTime()
+    : undefined;
+
+  const evidenceTimeLeft =
+    typeof evidenceDeadlineMillis === "number"
+      ? Math.max(0, evidenceDeadlineMillis - now)
+      : undefined;
+
+  const evidenceCountdown =
+    evidenceTimeLeft === undefined
+      ? undefined
+      : `${Math.ceil(evidenceTimeLeft / 60_000)} min`;
+  const evidenceDeadlineMinutes = Math.ceil(
+    MATCH_EVIDENCE_DEADLINE_MS / 60_000,
+  );
+  const evidenceDeadlineActive =
+    closed &&
+    typeof evidenceTimeLeft === "number" &&
+    evidenceTimeLeft >= 0 &&
+    !["settled", "disputed", "result_review", "cancelled"].includes(
+      matchStatus,
+    );
+  const provisionalResultVisible =
+    bothScreenshotsUploaded ||
+    matchStatus === "settled" ||
+    (typeof evidenceDeadlineMillis === "number" &&
+      evidenceDeadlineMillis <= now);
   const canUpload =
-    closed && matchStatus === "awaiting_evidence" && myEvidence.length === 0;
-  const remainingUploadAttempts = Math.max(0, 3 - failedUploadAttempts);
+    closed &&
+    matchStatus === "awaiting_evidence" &&
+    myEvidence.length === 0 &&
+    (evidenceTimeLeft === undefined || evidenceTimeLeft > 0);
+
+  const predefinedMessages = [
+    "Playing in 10 min",
+    "Give me room ID & pass",
+    "Playing at 6 PM",
+  ];
+
   return (
     <div className="grid min-w-0 gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
@@ -301,6 +379,31 @@ export function MatchChat({
           {expiresAt ? timeLeft : "Loading session…"}
         </span>
       </div>
+      {evidenceDeadlineActive ? (
+        <div
+          className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2"
+          role="status"
+          aria-live="polite"
+        >
+          <p className="text-center text-sm font-semibold text-amber-300">
+            {evidenceTimeLeft === 0
+              ? "Screenshot upload deadline reached. Processing the result…"
+              : `Final screenshot deadline: ${evidenceCountdown}`}
+          </p>
+          {evidenceTimeLeft !== 0 ? (
+            <p className="mt-1 text-center text-xs text-amber-100/80">
+              Both players have {evidenceDeadlineMinutes}{" "}
+              {evidenceDeadlineMinutes === 1 ? "minute" : "minutes"} from match
+              completion to upload a final result screenshot.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {deadlineOutcome && matchStatus !== "cancelled" ? (
+        <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
+          {deadlineOutcome}
+        </div>
+      ) : null}
       <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
         <p className="text-xs text-[var(--muted)]">
           {chatNotificationsMuted
@@ -377,32 +480,40 @@ export function MatchChat({
             </div>
           );
         })}
-        {closed && !roomIdRetryRequired ? (
+        {closed ? (
           <div className="space-y-3 border-t border-white/10 pt-3">
-            {result && result !== "hold" ? (
+            {result === "unreadable" ? (
+              <p className="text-center text-sm font-medium text-[var(--accent-2)]">
+                Analysing and waiting for other players screenshot
+              </p>
+            ) : result && result !== "hold" ? (
               <div className="relative mb-3 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 p-3">
-                <p className="text-center text-base font-semibold text-[var(--accent-2)]">
-                  {result === "win"
-                    ? "🎉 Congratulations! You won."
-                    : "💙 Better luck next time."}
-                </p>
-                {matchStatus !== "settled" ? (
+                {provisionalResultVisible ? (
+                  <p className="text-center text-base font-semibold text-[var(--accent-2)]">
+                    {result === "win"
+                      ? "🎉 Congratulations! You won."
+                      : "💙 Better luck next time."}
+                  </p>
+                ) : null}
+                {!provisionalResultVisible || matchStatus !== "settled" ? (
                   <p className="relative mt-2 text-center text-xs text-[var(--muted)]">
-                    Waiting for the other player&apos;s screenshot for final NV
-                    Token allocation.
+                    Analysing and waiting for other players screenshot
                   </p>
                 ) : null}
               </div>
             ) : (
-              <p className="text-center text-sm font-medium text-[var(--accent-2)]">
-                {result === "hold"
-                  ? "⚠ Match on Hold. Conflicting screenshots detected."
-                  : matchStatus === "cancelled"
-                    ? "This match was disqualified after the 24-hour chat limit. Both players' NV Tokens have been returned."
-                    : matchStatus === "analyzing"
-                      ? "Both result screenshots are in. Verifying the extracted results now."
-                      : "Match completed. Text chat is closed; each player must upload one result screenshot."}
-              </p>
+              <>
+                <p className="text-center text-sm font-medium text-[var(--accent-2)]">
+                  {result === "hold"
+                    ? "Match on hold for admin review. Submitted screenshots are preserved."
+                    : matchStatus === "cancelled"
+                      ? (deadlineOutcome ??
+                        "This match was disqualified after the 12-hour chat limit. Both players' NV Tokens have been returned.")
+                      : matchStatus === "analyzing"
+                        ? "Both result screenshots are in. Verifying the extracted results now."
+                        : "Match completed. Text chat is closed; each player must upload one result screenshot."}
+                </p>
+              </>
             )}
             {evidence.length ? (
               <div className="grid grid-cols-2 gap-2">
@@ -498,11 +609,7 @@ export function MatchChat({
                   ) : (
                     <ImagePlus className="pointer-events-none" size={17} />
                   )}
-                  {analyzingScreenshot
-                    ? "Analyzing screenshot…"
-                    : uploading
-                      ? "Uploading screenshot…"
-                      : "Confirm upload"}
+                  {uploading ? "Uploading screenshot…" : "Confirm upload"}
                 </Button>
                 {uploading ? (
                   <p
@@ -511,34 +618,43 @@ export function MatchChat({
                     aria-live="polite"
                   >
                     <LoaderCircle className="shrink-0 animate-spin" size={15} />
-                    {analyzingScreenshot
-                      ? "Analyzing screenshot… Please keep this page open."
-                      : "Uploading screenshot…"}
+                    Uploading screenshot…
                   </p>
                 ) : null}
               </div>
-              <p className="px-1 text-xs text-[var(--muted)]">
-                You have {remainingUploadAttempts} of 3 screenshot attempts
-                remaining.
-              </p>
             </>
           ) : null}
-          {!roomIdRetryRequired &&
-          matchStatus === "awaiting_evidence" &&
+          {matchStatus === "awaiting_evidence" &&
+          myEvidence.length > 0 &&
+          !result &&
           !canUpload ? (
             <p className="px-1 text-sm text-[var(--accent-2)]">
-              Your result screenshot is submitted. Waiting for the other player.
+              Analysing and waiting for other players screenshot
             </p>
           ) : null}
           {matchStatus === "disputed" ? (
             <p className="px-1 text-sm font-medium text-[var(--danger)]">
-              Verification is currently on hold because your or the opponent’s
-              screenshot was unclear. This may take some time.
+              Verification is on hold for admin review. Both submitted images
+              have been preserved.
             </p>
           ) : null}
         </div>
       ) : (
         <>
+          <div className="flex min-w-0 max-w-full gap-2 overflow-x-auto pb-1">
+            {predefinedMessages.map((message) => (
+              <button
+                key={message}
+                type="button"
+                disabled={expired || sending}
+                onClick={() => setBody(message)}
+                className="shrink-0 whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-white hover:bg-white/10 disabled:opacity-50"
+              >
+                {message}
+              </button>
+            ))}
+          </div>
+
           <form
             className="flex min-w-0 items-center gap-2 rounded-2xl border border-white/10 bg-black/25 p-2"
             onSubmit={send}
@@ -571,8 +687,7 @@ export function MatchChat({
               )}
             </Button>
           </form>
-
-          {messages.length > 0 && (
+          {messages.length ? (
             <div className="rounded-2xl border border-white/10 bg-black/25 p-2">
               <p className="mb-3 px-1 text-sm text-[var(--danger)]">
                 This cannot be undone. Once either player marks the match
@@ -581,12 +696,14 @@ export function MatchChat({
               </p>
               <ActionForm
                 action={confirmMatchCompletedAction}
-                submitLabel="Mark match completed"
+                submitLabel="Complete match"
                 confirmMessage="Mark this match as completed? Chat will close and both players must submit a final result screenshot."
               >
                 <input type="hidden" name="matchId" value={matchId} />
               </ActionForm>
             </div>
+          ) : (
+            ""
           )}
         </>
       )}

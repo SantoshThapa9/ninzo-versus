@@ -2,6 +2,7 @@ import { z } from "zod";
 import { connectDb } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { supportRepository, disputeRepository } from "@/repositories/ops.repository";
+import { playerProfileRepository } from "@/repositories/player-profile.repository";
 import { ReportType, SupportStatus, TicketSender } from "@/types/enums";
 import { notifySupportAdminReply } from "@/services/push-notification.service";
 
@@ -12,13 +13,18 @@ const createSchema = z.object({
   summary: z.string().min(8),
   matchId: z.string().optional(),
   whatsappNumber: z.string().min(6).optional(),
-  ign: z.string().optional(),
 });
 
 export async function openTicket(userId: string, raw: unknown) {
   const input = createSchema.parse(raw);
   await connectDb();
-  const ticket = await supportRepository.createTicket({ userId, source: "manual", ...input });
+  const profile = await playerProfileRepository.findByUserId(userId);
+  const ticket = await supportRepository.createTicket({
+    userId,
+    source: "manual",
+    ...input,
+    ign: profile?.ign,
+  });
   await supportRepository.addMessage({
     ticketId: String(ticket._id),
     sender: TicketSender.USER,
@@ -33,7 +39,7 @@ export async function openTicket(userId: string, raw: unknown) {
       matchId: input.matchId,
       reporterId: userId,
       type: input.category,
-      ign: input.ign,
+      ign: profile?.ign,
       description: input.summary,
       ticketId: ticket._id,
     });

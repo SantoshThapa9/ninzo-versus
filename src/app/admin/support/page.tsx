@@ -7,7 +7,7 @@ import { supportRepository } from "@/repositories/ops.repository";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PendingSubmitButton } from "@/components/forms/pending-submit-button";
-import { resolveTicketAction } from "@/app/actions/support";
+import { deleteTicketAction } from "@/app/actions/support";
 
 export default async function AdminSupportPage() {
   const session = await auth();
@@ -27,10 +27,10 @@ export default async function AdminSupportPage() {
             <Badge>{ticket.status}</Badge>
           </div>
           <p className="text-xs text-[var(--muted)]">{ticket.category}</p>
-          <form action={resolveTicketAction} className="mt-2">
+          <form action={deleteTicketAction} className="mt-2">
             <input type="hidden" name="ticketId" value={String(ticket._id)} />
-            <PendingSubmitButton type="submit" size="sm" variant="secondary" pendingLabel="Resolving...">
-              Resolve
+            <PendingSubmitButton type="submit" size="sm" variant="secondary" pendingLabel="Deleting...">
+              Delete ticket + evidence
             </PendingSubmitButton>
           </form>
         </Card>

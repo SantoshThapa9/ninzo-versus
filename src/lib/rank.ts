@@ -1,37 +1,39 @@
+import { RANK_MINIMUM_SCORES } from "@/config/defaults";
+
 export const RANKS = [
   {
     name: "Rookie",
-    minimumScore: 0,
+    minimumScore: RANK_MINIMUM_SCORES.Rookie,
     className: "text-slate-300",
     image: "/ranks/rookie.webp",
   },
   {
     name: "Elite",
-    minimumScore: 15,
+    minimumScore: RANK_MINIMUM_SCORES.Elite,
     className: "text-cyan-300",
     image: "/ranks/elite.webp",
   },
   {
     name: "Champion",
-    minimumScore: 25,
+    minimumScore: RANK_MINIMUM_SCORES.Champion,
     className: "text-violet-300",
     image: "/ranks/champion.webp",
   },
   {
     name: "Mythic",
-    minimumScore: 35,
+    minimumScore: RANK_MINIMUM_SCORES.Mythic,
     className: "text-fuchsia-300",
     image: "/ranks/mythic.webp",
   },
   {
     name: "Legend",
-    minimumScore: 45,
+    minimumScore: RANK_MINIMUM_SCORES.Legend,
     className: "text-amber-300",
     image: "/ranks/legend.webp",
   },
   {
     name: "Immortal",
-    minimumScore: 55,
+    minimumScore: RANK_MINIMUM_SCORES.Immortal,
     className: "text-rose-300",
     image: "/ranks/immortal.webp",
   },

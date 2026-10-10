@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { supportChatReply } from "@/services/ai.service";
+import { supportChatReply } from "@/services/support-chat.service";
 
 type ChatHistoryItem = { sender: "user" | "assistant"; body: string };
 
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
               (item.sender === "user" || item.sender === "assistant") &&
               typeof item.body === "string",
           )
-          .slice(-20)
+          .slice(-10)
           .map((item) => ({
             sender: item.sender,
             body: item.body.trim().slice(0, 4000),

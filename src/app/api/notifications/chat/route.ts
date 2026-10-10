@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   await connectDb();
-  const matches = await matchRepository.listActiveForUser(session.user.id);
+  const matches = await matchRepository.listActiveForNotifications(session.user.id);
   const mutedMatchIds = new Set(
     matches
       .filter((match) =>
@@ -31,9 +31,11 @@ export async function GET() {
     matchId: { $in: matchIds },
     senderId: { $ne: session.user.id },
     senderOnly: { $ne: true },
+    createdAt: { $gte: new Date(Date.now() - 2 * 60 * 1000) },
   })
+    .select("_id matchId senderId body createdAt")
     .sort({ createdAt: -1 })
-    .limit(50)
+    .limit(30)
     .maxTimeMS(8_000)
     .lean();
   const senderIds = [...new Set(messages.map((message) => String(message.senderId)))];

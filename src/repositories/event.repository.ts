@@ -25,7 +25,12 @@ export const eventRepository = {
       .lean();
   },
   listAll(filter: Record<string, unknown> = {}) {
-    return HostedEventModel.find(filter).sort({ createdAt: -1 }).lean();
+    return HostedEventModel.find(filter)
+      .select("_id name status")
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .maxTimeMS(8_000)
+      .lean();
   },
   listCompleted(season: {
     _id: mongoose.Types.ObjectId;

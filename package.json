@@ -11,6 +11,8 @@
     "db:migrate-profile-update-timestamp": "node scripts/migrate-profile-update-timestamp.mjs",
     "db:backfill-game-identities": "node scripts/backfill-user-game-identities.mjs",
     "db:prune-live-season-stats": "node scripts/prune-live-season-stats.mjs",
+    "db:prune-resolved-support-tickets": "node scripts/prune-resolved-support-tickets.mjs",
+    "db:ensure-match-ttl-index": "node scripts/ensure-match-ttl-index.mjs",
     "db:rebuild-indexes": "node scripts/rebuild-mongodb-indexes.mjs"
   },
   "dependencies": {

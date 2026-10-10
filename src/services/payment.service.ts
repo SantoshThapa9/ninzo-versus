@@ -6,8 +6,8 @@ import { applyPercent, coinsToRupees, isValidTokenAmount } from "@/lib/utils";
 import { getEnv, requireEnv } from "@/config/env";
 import { paymentRepository } from "@/repositories/finance.repository";
 import { applyLedger } from "@/services/wallet.service";
-import { getPlatformSettings } from "@/services/settings.service";
 import { CoinTxnType, PaymentStatus } from "@/types/enums";
+import { ECONOMY_DEFAULTS } from "@/config/defaults";
 
 function razorpayClient() {
   return new Razorpay({
@@ -17,18 +17,20 @@ function razorpayClient() {
 }
 
 export async function createDepositOrder(userId: string, coins: number) {
-  const settings = await getPlatformSettings();
   if (!isValidTokenAmount(coins)) {
-    throw new AppError("NV Tokens can have up to two decimal places.", "INVALID_COINS");
-  }
-  if (coins < settings.minDepositCoins) {
     throw new AppError(
-      `Minimum NV Token purchase is ${settings.minDepositCoins} NV Tokens.`,
+      "NV Tokens can have up to two decimal places.",
+      "INVALID_COINS",
+    );
+  }
+  if (coins < ECONOMY_DEFAULTS.minDepositCoins) {
+    throw new AppError(
+      `Minimum NV Token purchase is ${ECONOMY_DEFAULTS.minDepositCoins} NV Tokens.`,
       "MIN_DEPOSIT",
     );
   }
-  const rupees = coinsToRupees(coins, settings.nvCoinsPerRupee);
-  const feeRupees = (rupees * settings.depositFeePercent) / 100;
+  const rupees = coinsToRupees(coins, ECONOMY_DEFAULTS.nvCoinsPerRupee);
+  const feeRupees = (rupees * ECONOMY_DEFAULTS.depositFeePercent) / 100;
   const totalRupees = rupees + feeRupees;
   const amountPaise = Math.round(totalRupees * 100);
   const feePaise = Math.round(feeRupees * 100);
@@ -59,7 +61,11 @@ export async function createDepositOrder(userId: string, coins: number) {
   };
 }
 
-export async function fulfillDeposit(orderId: string, paymentId: string, signature?: string) {
+export async function fulfillDeposit(
+  orderId: string,
+  paymentId: string,
+  signature?: string,
+) {
   await connectDb();
   const payment = await paymentRepository.findByOrderId(orderId);
   if (!payment) throw new AppError("Payment not found.", "NOT_FOUND", 404);
@@ -106,15 +112,15 @@ export function verifyWebhookSignature(rawBody: string, signature: string) {
   return expected === signature;
 }
 
-export function quoteDeposit(coins: number, settings: Awaited<ReturnType<typeof getPlatformSettings>>) {
-  const rupees = coinsToRupees(coins, settings.nvCoinsPerRupee);
-  const feeRupees = (rupees * settings.depositFeePercent) / 100;
+export function quoteDeposit(coins: number) {
+  const rupees = coinsToRupees(coins, ECONOMY_DEFAULTS.nvCoinsPerRupee);
+  const feeRupees = (rupees * ECONOMY_DEFAULTS.depositFeePercent) / 100;
   return {
     coins,
     rupees,
     feeRupees,
     totalRupees: rupees + feeRupees,
-    feePercent: settings.depositFeePercent,
+    feePercent: ECONOMY_DEFAULTS.depositFeePercent,
   };
 }
 

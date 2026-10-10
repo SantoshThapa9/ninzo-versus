@@ -10,19 +10,23 @@ import { acceptMatchAction, deleteMatchAction } from "@/app/actions/match";
 import { MatchChat } from "@/components/match/match-chat";
 import { ClashStatusSync } from "@/components/match/clash-status-sync";
 import { UserRole } from "@/types/enums";
-import { ShieldCheck, Swords } from "lucide-react";
+import { ShieldCheck, Swords, Trash2 } from "lucide-react";
 
 export default async function ClashDetailPage({
   params,
 }: PageProps<"/clash/[id]">) {
   const session = await auth();
+
   if (!session?.user?.id) redirect("/login");
+
   const { id } = await params;
+
   const data = await getMatchForUser(
     session.user.id,
     id,
     session.user.role === UserRole.ADMIN,
   );
+
   const match = data.match as {
     _id: string;
     format: number;
@@ -41,132 +45,163 @@ export default async function ClashDetailPage({
     completedBy?: string[];
     aiWinnerRecommendation?: string;
   };
+
   const players = data.players as {
     userId: string;
     ign: string;
   }[];
+
   const isCreator = match.creatorId === session.user.id;
+
   const isParticipant =
     isCreator || match.opponentCaptainId === session.user.id;
+
   const creator = players.find((player) => player.userId === match.creatorId);
+
   const opponent = players.find((player) => player.userId !== match.creatorId);
-  const playerLabel = (
-    player: { userId: string; ign: string } | undefined,
-  ) =>
+
+  const playerLabel = (player: { userId: string; ign: string } | undefined) =>
     player?.userId === session.user.id ? "You" : (player?.ign ?? "Player");
+
   return (
     <div className="mx-auto grid w-full max-w-2xl gap-4 pb-2">
       <ClashStatusSync isCreator={isCreator} status={match.status} />
-      <Card className="relative overflow-hidden border-white/15 bg-transparent p-0">
+
+      {/* Match Header */}
+      <Card className="relative overflow-hidden border-white/10 bg-transparent p-0">
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: "url('/cs.png')" }}
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#070a10]/95 via-[#070a10]/82 to-[#070a10]/50" />
-        <div className="relative p-5 text-white sm:p-6">
-          <div className="mb-4 flex items-center gap-2 text-[var(--accent-2)]">
-            <Swords size={17} />
+
+        <div className="absolute inset-0 bg-gradient-to-r from-[#070a10]/95 via-[#070a10]/85 to-[#070a10]/60" />
+
+        <div className="relative p-4 sm:p-5">
+          {/* Header label */}
+          <div className="mb-3 flex items-center gap-2 text-[var(--accent-2)]">
+            <Swords size={16} />
+
             <p className="text-xs font-bold uppercase tracking-[0.16em]">
-              Clash arena
+              Clash Arena
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="text-3xl font-black tracking-tight">
+
+          {/* Title + Status */}
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-3xl font-black tracking-tight text-white">
               {match.format}v{match.format}
             </h1>
-            <Badge className="border border-[var(--accent-2)]/25 bg-[var(--accent-2)]/15">
+
+            <Badge className="border border-[var(--accent-2)]/25 bg-[var(--accent-2)]/15 px-3 py-1 text-xs">
               {match.status}
             </Badge>
           </div>
-          <p className="mt-3 text-sm leading-6 text-white/70">{match.rules}</p>
-          <p className="mt-3 break-words text-sm">
-            {match.rounds ?? 7} rounds{" "}
-            <span className="hidden sm:inline">•</span>{" "}
-            {match.stakeMin === match.stakeMax
-              ? `Match registration: ${match.stakeMin} NV Tokens each`
-              : `Match registration range: ${match.stakeMin}–${match.stakeMax} NV Tokens each`}{" "}
-            <span className="hidden sm:inline">•</span>
-            <span className="block sm:inline">
-              {" "}
-              Creator: {isCreator ? "You" : match.creatorIgn}
-            </span>
+
+          {/* Rules */}
+          <p className="mt-3 whitespace-pre-line text-sm leading-6 text-white/70">
+            {match.rules}
           </p>
+          {/* Match info */}
+          <div className="mt-3  gap-x-3 gap-y-1 text-sm text-white/80">
+            <span>{match.rounds ?? 7} rounds</span>
+
+            <p>Creator: {isCreator ? "You" : match.creatorIgn}</p>
+          </div>
+
           {match.acceptedStake ? (
-            <p className="mt-2 text-sm">
-              Registered with {match.acceptedStake} NV Tokens each • Final
-              result verification determines eligible esports rewards.
-            </p>
+            <div className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-300">
+              Registered with {match.acceptedStake} NV Tokens each.
+            </div>
           ) : null}
         </div>
       </Card>
-      <Card className="border-white/10">
-        <div className="mb-3 flex items-center gap-2">
-          <ShieldCheck size={18} className="text-[var(--accent-2)]" />
-          <h2 className="font-bold">Match rules</h2>
-        </div>
-        <ul className="space-y-3 text-sm leading-6 text-[var(--muted)]">
-          <li className="flex items-start gap-3">
-            <span className="mt-1 text-[var(--primary)]">✓</span>
-            <span>
-              Use only the agreed-upon custom-room settings and follow all
-              tournament rules.
-            </span>
-          </li>
 
-          <li className="flex items-start gap-3">
-            <span className="mt-1 text-[var(--primary)]">✓</span>
-            <span>
-              After the match ends, both players must upload a screenshot of the
-              final result.
-            </span>
-          </li>
-        </ul>
-      </Card>
+      {/* Accept Challenge */}
       {match.status === "open" && !isCreator ? (
-        <Card>
-          <h2 className="mb-1 font-bold">Accept challenge</h2>
-          <p className="mb-4 text-sm text-[var(--muted)]">
-            Your selected match registration is reserved as soon as you accept.
-          </p>
-          <p className="mb-4 text-sm text-[var(--muted)]">
-            You can register with {match.stakeMin} to {match.stakeMax} NV
-            Tokens.
-          </p>
+        <Card className="border-white/10 p-4">
+          <div className="mb-4">
+            <p className="mb-1 text-sm font-medium text-amber-400">
+              Join Match
+            </p>
+
+            <h2 className="text-xl font-bold">Accept challenge</h2>
+
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              Choose your match registration within the allowed token range.
+            </p>
+          </div>
+
+          <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+            <p className="text-sm text-[var(--muted)]">Registration range</p>
+
+            <p className="mt-1 text-lg font-bold text-white">
+              {match.stakeMin} – {match.stakeMax}{" "}
+              <span className="text-sm font-medium text-[var(--muted)]">
+                NV Tokens
+              </span>
+            </p>
+          </div>
 
           <ActionForm
             action={acceptMatchAction}
             submitLabel="Register for match"
           >
             <input type="hidden" name="matchId" value={id} />
-            <div>
-              <Label htmlFor="stake">Your match registration (NV Tokens)</Label>
+
+            <div className="space-y-2">
+              <Label htmlFor="stake">Your match registration</Label>
+
               <Input
                 id="stake"
                 name="stake"
                 type="number"
                 min={match.stakeMin}
                 max={match.stakeMax}
+                defaultValue={match.stakeMin}
                 step="0.01"
                 required
+                placeholder={`${match.stakeMin} – ${match.stakeMax}`}
               />
+
+              <p className="text-xs text-[var(--muted)]">
+                Enter an amount between {match.stakeMin} and {match.stakeMax} NV
+                Tokens.
+              </p>
             </div>
-            <p className="text-sm text-[var(--muted)]">
-              Your saved In Game Name from your profile will be used
-              when you accept.
-            </p>
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" name="warning" required className="mt-1" />
-              I agree to follow the match rules shown above.
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3 text-sm">
+              <input
+                type="checkbox"
+                name="warning"
+                required
+                className="mt-1 h-4 w-4 accent-emerald-400"
+              />
+
+              <span className="leading-6 text-[var(--muted)]">
+                I agree to follow the match rules shown above.
+              </span>
             </label>
           </ActionForm>
         </Card>
       ) : null}
+
+      {/* Delete Challenge */}
       {match.status === "open" && isCreator ? (
-        <Card>
-          <h2 className="mb-1 font-bold">Remove challenge post</h2>
-          <p className="mb-4 text-sm text-[var(--muted)]">
-            Deleting this open post refunds your locked challenge tokens.
-          </p>
+        <Card className="border-red-400/20 p-4">
+          <div className="mb-4 flex items-start gap-3">
+            <div className="rounded-lg border border-red-400/20 bg-red-400/10 p-2">
+              <Trash2 size={17} className="text-red-400" />
+            </div>
+
+            <div>
+              <h2 className="font-bold">Remove challenge post</h2>
+
+              <p className="mt-1 text-sm leading-5 text-[var(--muted)]">
+                Deleting this open post refunds your locked challenge tokens.
+              </p>
+            </div>
+          </div>
+
           <ActionForm
             action={deleteMatchAction}
             submitLabel="Delete challenge post"
@@ -176,6 +211,8 @@ export default async function ClashDetailPage({
           </ActionForm>
         </Card>
       ) : null}
+
+      {/* Private Match Chat */}
       {isParticipant &&
       [
         "accepted",
@@ -186,11 +223,15 @@ export default async function ClashDetailPage({
         "disputed",
         "settled",
       ].includes(match.status) ? (
-        <Card>
-          <h2 className="mb-1 font-bold">Private match chat</h2>
-          <p className="mb-3 break-words text-sm text-[var(--accent-2)]">
-            {playerLabel(creator)} vs {playerLabel(opponent)}
-          </p>
+        <Card className="border-white/10 p-4">
+          <div className="mb-3">
+            <h2 className="font-bold  text-amber-400">Private Match chat</h2>
+
+            <p className="mt-1 break-words text-sm text-[var(--accent-2)]">
+              {playerLabel(creator)} vs {playerLabel(opponent)}
+            </p>
+          </div>
+
           <MatchChat matchId={id} currentUserId={session.user.id} />
         </Card>
       ) : null}

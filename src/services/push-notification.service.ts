@@ -50,6 +50,7 @@ export async function notifyChallengeAccepted(
     body: `${opponentIgn} accepted your challenge.`,
     url: `/clash/${matchId}`,
     tag: `clash-accepted-${matchId}`,
+    kind: "challenge_accepted",
   });
 
   await Promise.all(
@@ -57,7 +58,7 @@ export async function notifyChallengeAccepted(
       try {
         await webpush.sendNotification(subscription as PushSubscription, payload, {
           vapidDetails,
-          TTL: 60 * 60 * 24,
+          TTL: 5 * 60,
           urgency: "high",
           topic: `clash-${matchId}`.slice(0, 32),
         });
@@ -80,11 +81,65 @@ export async function notifyChallengeAccepted(
   );
 }
 
+/** Sends a push notification when the other player completes a match. */
+export async function notifyMatchCompleted(
+  recipientId: string,
+  senderIgn: string,
+  matchId: string,
+) {
+  const env = getEnv();
+  if (!env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) {
+    console.warn("[push] VAPID is not configured; match completion push was skipped.");
+    return;
+  }
+  const vapidDetails = {
+    subject: env.VAPID_SUBJECT,
+    publicKey: env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    privateKey: env.VAPID_PRIVATE_KEY,
+  };
+  await connectDb();
+  const subscriptions = await PushSubscriptionModel.find({ userId: recipientId }).lean();
+  const payload = JSON.stringify({
+    title: "Match completed",
+    body: `${senderIgn} marked the match complete. Upload your final result screenshot.`,
+    url: `/clash/${matchId}`,
+    tag: `clash-completed-${matchId}`,
+    kind: "match_completed",
+  });
+
+  await Promise.all(
+    subscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(subscription as PushSubscription, payload, {
+          vapidDetails,
+          TTL: 5 * 60,
+          urgency: "high",
+          topic: `clash-done-${matchId}`.slice(0, 32),
+        });
+      } catch (error) {
+        const statusCode =
+          typeof error === "object" && error !== null && "statusCode" in error
+            ? Number(error.statusCode)
+            : undefined;
+        if (statusCode === 404 || statusCode === 410) {
+          await PushSubscriptionModel.deleteOne({ _id: subscription._id });
+          return;
+        }
+        console.error("[push] Failed to send match completion notification.", {
+          matchId,
+          statusCode,
+        });
+      }
+    }),
+  );
+}
+
 /** Sends a best-effort push for a new private-match chat message. */
 export async function notifyMatchChatMessage(
   recipientId: string,
   senderIgn: string,
   matchId: string,
+  messageId: string,
   body: string,
 ) {
   const env = getEnv();
@@ -112,9 +167,9 @@ export async function notifyMatchChatMessage(
       try {
         await webpush.sendNotification(subscription as PushSubscription, payload, {
           vapidDetails,
-          TTL: 60 * 60 * 24,
+          TTL: 5 * 60,
           urgency: "high",
-          topic: `clash-chat-${matchId}`.slice(0, 32),
+          topic: `chat-${messageId}`.slice(0, 32),
         });
       } catch (error) {
         const statusCode =
@@ -164,7 +219,7 @@ export async function notifySupportAdminReply(
       try {
         await webpush.sendNotification(subscription as PushSubscription, payload, {
           vapidDetails,
-          TTL: 60 * 60 * 24,
+          TTL: 5 * 60,
           urgency: "high",
           topic: `support-${ticketId}`.slice(0, 32),
         });

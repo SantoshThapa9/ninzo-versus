@@ -23,7 +23,7 @@ const SupportTicketSchema = new Schema(
 
 // Both customer and admin inboxes order tickets by their most recent activity.
 SupportTicketSchema.index({ userId: 1, updatedAt: -1 });
-SupportTicketSchema.index({ status: 1, updatedAt: -1 });
+SupportTicketSchema.index({ source: 1, status: 1, updatedAt: -1 });
 
 export type SupportTicketDoc = InferSchemaType<typeof SupportTicketSchema> & {
   _id: Types.ObjectId;

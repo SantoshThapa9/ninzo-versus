@@ -19,7 +19,7 @@ function playAcceptanceSound() {
     oscillator.type = "sine";
     oscillator.frequency.setValueAtTime(880, context.currentTime);
     gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.4, context.currentTime + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.42);
     oscillator.connect(gain).connect(context.destination);
     oscillator.start();

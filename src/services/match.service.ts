@@ -5,9 +5,11 @@ import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { applyPercent, isValidTokenAmount, roundTokens } from "@/lib/utils";
 import {
+  CLASH_CHAT_EXPIRY_MS,
   CLASH_DEFAULTS,
   ECONOMY_DEFAULTS,
   MEDIA_DEFAULTS,
+  MATCH_HISTORY_RETENTION_DAYS,
 } from "@/config/defaults";
 import { matchRepository } from "@/repositories/match.repository";
 import { MatchModel } from "@/models/match";
@@ -17,22 +19,28 @@ import {
   applyLedger,
   getOrCreatePlatformUser,
 } from "@/services/wallet.service";
-import { getPlatformSettings } from "@/services/settings.service";
 import { deletePrivateMedia } from "@/services/media.service";
 import {
   auditRepository,
-  evidenceAttemptRepository,
   resultRepository,
   verifiedRoomIdRepository,
 } from "@/repositories/ops.repository";
-import { CoinTxnType, EVENT_ROUNDS, EvidenceKind, MatchStatus } from "@/types/enums";
 import {
-  analyzeMatchScreenshot,
-  extractedChallengePlayersMatch,
-  extractedIgnMatchesPlayer,
-  validateMatchScreenshots,
-  type VisionResult,
-} from "@/services/ai.service";
+  CoinTxnType,
+  EVENT_ROUNDS,
+  EvidenceKind,
+  MatchStatus,
+} from "@/types/enums";
+
+import { analyzeMatchScreenshot } from "@/services/image-analysis.service";
+import {
+  decideDeadlineOutcome,
+  decideTwoScreenshotOutcome,
+  getMatchEvidenceDeadline,
+  parseScreenshotResult,
+  type ScreenshotResult,
+} from "@/services/match-evidence-rules";
+
 import {
   getCurrentUserIdentities,
   getCurrentUserIdentity,
@@ -43,15 +51,15 @@ const createMatchSchema = z.object({
   format: z
     .number()
     .int()
+    .refine((n) => CLASH_DEFAULTS.teamSizes.includes(n as 1 | 2 | 4)),
+  rounds: z
+    .number()
+    .int()
     .refine(
-      (n) => CLASH_DEFAULTS.teamSizes.includes(n as 1),
-      //curently only solo focus
-      // CLASH_DEFAULTS.teamSizes.includes(n as 1 | 2 | 3 | 4 | 5 | 6),
+      (rounds) =>
+        EVENT_ROUNDS.includes(rounds as (typeof EVENT_ROUNDS)[number]),
+      { message: "Choose a valid round count." },
     ),
-  rounds: z.number().int().refine(
-    (rounds) => EVENT_ROUNDS.includes(rounds as (typeof EVENT_ROUNDS)[number]),
-    { message: "Choose a valid round count." },
-  ),
   stakeMin: z
     .number()
     .min(ECONOMY_DEFAULTS.minMatchStakeCoins)
@@ -79,10 +87,23 @@ const acceptMatchSchema = z.object({
   warningAcknowledged: z.literal(true),
 });
 
-async function assertNoOpenMatch(
+async function discardRejectedEvidenceUpload(
+  matchId: string,
   userId: string,
-  session: ClientSession,
+  blobPathname: string,
 ) {
+  try {
+    await deletePrivateMedia(blobPathname);
+  } catch (error) {
+    console.error("[match-ai] Could not remove rejected screenshot upload.", {
+      matchId,
+      userId,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+}
+
+async function assertNoOpenMatch(userId: string, session: ClientSession) {
   if (await matchRepository.hasOpenForUser(userId, session)) {
     throw new AppError(
       "You already have an open challenge. You can accept or create another challenge after it is no longer open.",
@@ -102,7 +123,6 @@ export async function createClashMatch(userId: string, raw: unknown) {
 
   await connectDb();
   const season = await getOrCreateSeasonForDate(new Date());
-  const settings = await getPlatformSettings();
   const currentIdentity = await getCurrentUserIdentity(userId);
   if (!currentIdentity.ign)
     throw new AppError(
@@ -138,7 +158,7 @@ export async function createClashMatch(userId: string, raw: unknown) {
         stakeMin: input.stakeMin,
         stakeMax: input.stakeMax,
         lockedStake: input.stakeMax,
-        platformFeePercent: settings.platformFeePercent,
+        platformFeePercent: ECONOMY_DEFAULTS.platformFeePercent,
         status: MatchStatus.OPEN,
         warningAcknowledgedAt: new Date(),
       },
@@ -245,7 +265,7 @@ export async function acceptClashMatch(userId: string, raw: unknown) {
     match.prizePool = prizePool;
     match.platformFeeAmount = platformFeeAmount;
     match.winnerPayout = winnerPayout;
-    match.chatExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    match.chatExpiresAt = new Date(Date.now() + CLASH_CHAT_EXPIRY_MS);
     match.status = MatchStatus.ACCEPTED;
     await match.save({ session });
 
@@ -364,22 +384,6 @@ export async function setMatchLive(
   return match;
 }
 
-function normalizeRoomId(value?: string) {
-  const normalized =
-    value?.toLocaleUpperCase().replace(/[^A-Z0-9#]/g, "") ?? "";
-  if (/^\d{7}$/.test(normalized)) return normalized;
-  const hashIndex = normalized.indexOf("#");
-  if (hashIndex === -1) return "";
-  return normalized.slice(0, hashIndex).match(/\d{7}$/)?.[0] ?? "";
-}
-
-function normalizeWinnerIgn(value?: string) {
-  const ign = value?.trim();
-  if (!ign || ["WARBRINGERS", "HOWLERS"].includes(ign.toLocaleUpperCase()))
-    return undefined;
-  return ign;
-}
-
 export async function submitMatchEvidence(
   userId: string,
   matchId: string,
@@ -388,9 +392,25 @@ export async function submitMatchEvidence(
   blobPathname: string,
 ) {
   await connectDb();
-  const match = await matchRepository.findById(matchId);
-  if (!match) throw new AppError("Match not found.", "NOT_FOUND", 404);
+  let match = await matchRepository.findById(matchId);
+  if (!match) {
+    await discardRejectedEvidenceUpload(matchId, userId, blobPathname);
+    throw new AppError("Match not found.", "NOT_FOUND", 404);
+  }
+  if (
+    match.status === MatchStatus.AWAITING_EVIDENCE &&
+    match.evidenceDeadlineAt &&
+    match.evidenceDeadlineAt <= new Date()
+  ) {
+    await expireMatchEvidenceDeadline(matchId);
+    match = await matchRepository.findById(matchId);
+  }
+  if (!match) {
+    await discardRejectedEvidenceUpload(matchId, userId, blobPathname);
+    throw new AppError("Match not found.", "NOT_FOUND", 404);
+  }
   if (match.status !== MatchStatus.AWAITING_EVIDENCE) {
+    await discardRejectedEvidenceUpload(matchId, userId, blobPathname);
     throw new AppError(
       "Screenshots can be uploaded after both players mark the match complete.",
       "EVIDENCE_NOT_OPEN",
@@ -400,6 +420,7 @@ export async function submitMatchEvidence(
     String(match.creatorId) !== userId &&
     String(match.opponentCaptainId) !== userId
   ) {
+    await discardRejectedEvidenceUpload(matchId, userId, blobPathname);
     throw new AppError(
       "Only match participants can upload screenshots.",
       "FORBIDDEN",
@@ -407,495 +428,396 @@ export async function submitMatchEvidence(
     );
   }
   if (kind !== EvidenceKind.POST_MATCH_RESULT) {
+    await discardRejectedEvidenceUpload(matchId, userId, blobPathname);
     throw new AppError(
       "Submit one match-result screenshot.",
       "INVALID_EVIDENCE",
     );
   }
-  const uploadedCount = await resultRepository.countForMatchUserKind(
-    matchId,
-    userId,
-    kind,
-  );
-  if (uploadedCount >= 1)
+  if (await resultRepository.countForMatchUserKind(matchId, userId, kind)) {
+    await discardRejectedEvidenceUpload(matchId, userId, blobPathname);
     throw new AppError(
       "You already submitted this screenshot type.",
       "EVIDENCE_LIMIT",
     );
+  }
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + MEDIA_DEFAULTS.tempRetentionDays);
 
-  const registerUnreadableScreenshot = async (
-    reason: string,
-  ): Promise<never> => {
-    // Each rejection is its own durable record. Counting records avoids
-    // Mongoose document-array caching during Next.js development reloads.
-    await evidenceAttemptRepository.recordFailure({ matchId, userId, reason });
-    const attempt = await evidenceAttemptRepository.countFailures(
-      matchId,
-      userId,
-    );
-
-    if (attempt < 3) {
-      try {
-        await deletePrivateMedia(blobPathname);
-      } catch {
-        console.error(
-          "[match-ai] Could not remove rejected screenshot upload.",
-          {
-            matchId,
-            userId,
-          },
+  let submission: Awaited<ReturnType<typeof resultRepository.create>>;
+  try {
+    submission = await withTransaction(async (session) => {
+      const current = await matchRepository.findById(matchId, session);
+      if (
+        !current ||
+        current.status !== MatchStatus.AWAITING_EVIDENCE ||
+        (current.evidenceDeadlineAt && current.evidenceDeadlineAt <= new Date())
+      ) {
+        throw new AppError(
+          "The screenshot submission deadline has passed.",
+          "EVIDENCE_DEADLINE_PASSED",
+          409,
         );
       }
-      const remaining = 3 - attempt;
+      if (
+        String(current.creatorId) !== userId &&
+        String(current.opponentCaptainId) !== userId
+      ) {
+        throw new AppError(
+          "Only match participants can upload screenshots.",
+          "FORBIDDEN",
+          403,
+        );
+      }
+      if (
+        await resultRepository.countForMatchUserKind(
+          matchId,
+          userId,
+          kind,
+          session,
+        )
+      ) {
+        throw new AppError(
+          "You already submitted this screenshot.",
+          "EVIDENCE_LIMIT",
+          409,
+        );
+      }
+      const saved = await resultRepository.create(
+        {
+          matchId,
+          userId,
+          kind,
+          mediaUrl,
+          blobPathname,
+          expiresAt,
+        },
+        session,
+      );
+      const deadlineUpdate = await matchRepository.addEvidenceSubmission(
+        matchId,
+        getMatchEvidenceDeadline(saved.createdAt),
+        new Date(),
+        session,
+      );
+      if (!deadlineUpdate.matchedCount) {
+        throw new AppError(
+          "The screenshot submission deadline has passed.",
+          "EVIDENCE_DEADLINE_PASSED",
+          409,
+        );
+      }
+      return saved;
+    });
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === 11000
+    ) {
+      await discardRejectedEvidenceUpload(matchId, userId, blobPathname);
       throw new AppError(
-        `${reason} You have ${remaining} screenshot ${remaining === 1 ? "attempt" : "attempts"} remaining.`,
-        "SCREENSHOT_REUPLOAD_REQUIRED",
-        422,
-        { failedUploadAttempts: attempt },
+        "You already submitted this screenshot.",
+        "EVIDENCE_LIMIT",
+        409,
       );
     }
+    await discardRejectedEvidenceUpload(matchId, userId, blobPathname);
+    throw error;
+  }
 
-    const submission = await resultRepository.create({
-      matchId,
-      userId,
-      kind,
-      mediaUrl,
-      blobPathname,
-      expiresAt,
-      aiAnalysis: { confidence: 0, raw: { rejectionReason: reason } },
-    });
-    await auditRepository.write({
-      actorId: userId,
-      action: "match.evidence.admin_review_required",
-      entityType: "Match",
-      entityId: matchId,
-      metadata: { reason, attempt, evidenceId: String(submission._id) },
-    });
-    throw new AppError(
-      "Your third screenshot could not be verified and has been saved. The match will be sent for admin review after the other player submits a screenshot.",
-      "ADMIN_REVIEW_REQUIRED",
-      422,
-      { failedUploadAttempts: attempt },
-    );
-  };
-
-  // Use the identity captured when the match was created/accepted. Profile or
-  // Atlas edits during a match must not change the evidence being validated.
-  const participants = await matchRepository.listParticipants(matchId);
-  const platformIgn =
-    participants.find((player) => String(player.userId) === userId)?.ign ??
-    undefined;
-  const opponentId =
-    String(match.creatorId) === userId
-      ? String(match.opponentCaptainId)
-      : String(match.creatorId);
-  const opponentIgn = opponentId
-    ? (participants.find((player) => String(player.userId) === opponentId)
-        ?.ign ?? undefined)
-    : undefined;
-  let analysis: VisionResult = { confidence: 0 };
+  let result: ScreenshotResult = "UNREADABLE";
+  let extractionFailed = false;
   try {
-    analysis = (await analyzeMatchScreenshot(blobPathname)) ?? analysis;
-  } catch {
-    console.error("[match-ai] Screenshot analysis failed.", {
-      matchId,
-      userId,
-    });
-  }
-  const normalizedRoomId = normalizeRoomId(analysis.roomId);
-  const normalizedAnalysis = {
-    ...analysis,
-    roomId: normalizedRoomId || undefined,
-    winnerIGN: normalizeWinnerIgn(analysis.winnerIGN),
-  };
-  console.info(
-    "[match-ai] Normalized room and winner extraction before persisting provisional result.",
-    {
-      matchId,
-      userId,
-      normalizedRoomId,
-      winnerIGN: normalizedAnalysis.winnerIGN ?? null,
-      rawRoomId: analysis.roomId ?? null,
-      rawWinnerIGN: analysis.winnerIGN ?? null,
-    },
-  );
-  analysis = normalizedAnalysis;
-
-  if (
-    !extractedChallengePlayersMatch(analysis.playerIGNs, [
-      platformIgn ?? "",
-      opponentIgn ?? "",
-    ])
-  ) {
-    console.warn(
-      "[match-ai] Screenshot rejected: both registered player IGNs were not confirmed.",
-      { matchId, userId },
-    );
-    await registerUnreadableScreenshot("winner IGN unreadable or unregistered");
-  }
-
-  if (!analysis.roomId || !analysis.winnerIGN) {
-    console.warn(
-      "[match-ai] Screenshot rejected: required result details are unreadable.",
+    result = parseScreenshotResult(await analyzeMatchScreenshot(blobPathname));
+  } catch (error) {
+    extractionFailed = true;
+    console.error(
+      "[match-ai] Screenshot analysis failed; saved for manual review.",
       {
         matchId,
         userId,
-        hasRoomId: Boolean(analysis.roomId),
-        hasWinnerIgn: Boolean(analysis.winnerIGN),
+        error: error instanceof Error ? error.message : "Unknown error",
       },
     );
-    await registerUnreadableScreenshot(
-      "We couldn't read the required match details from this screenshot.",
-    );
   }
-
-  // A room ID enters the permanent registry only when a match is settled.
-  // Checking it here prevents an old final-result image from being accepted as
-  // evidence for a new match.
-  const previouslyVerifiedRoom = await verifiedRoomIdRepository.find(
-    analysis.roomId as string,
-  );
-  if (previouslyVerifiedRoom) {
-    console.warn("[match-ai] Screenshot rejected: room ID was already used.", {
-      matchId,
-      userId,
-      roomId: analysis.roomId,
-      verifiedMatchId: String(previouslyVerifiedRoom.matchId),
-    });
-    await registerUnreadableScreenshot(
-      "This match screenshot was already used. Do not upload an old screenshot; upload the current match's final-result screenshot.",
-    );
-  }
-
-  const submission = await resultRepository.create({
-    matchId,
-    userId,
-    kind,
-    mediaUrl,
-    blobPathname,
-    expiresAt,
+  await resultRepository.setAiAnalysis(String(submission._id), {
+    result,
+    extractionFailed,
   });
-  await resultRepository.setAiAnalysis(String(submission._id), analysis);
-  console.info("[match-ai] Result screenshot extraction saved.", {
-    matchId,
-    userId,
-  });
-
-  const winnerMatchesPlayer = extractedIgnMatchesPlayer(
-    analysis.winnerIGN,
-    platformIgn,
-  );
-  const winnerMatchesOpponent = extractedIgnMatchesPlayer(
-    analysis.winnerIGN,
-    opponentIgn,
-  );
-  const personalResult =
-    winnerMatchesPlayer && !winnerMatchesOpponent
-      ? ("win" as const)
-      : winnerMatchesOpponent && !winnerMatchesPlayer
-        ? ("loss" as const)
-        : undefined;
-
-  await MatchModel.findByIdAndUpdate(matchId, {
-    $set: {
-      provisionalResult: personalResult
-        ? personalResult === "win"
-          ? "WIN"
-          : "LOSS"
-        : null,
+  await MatchModel.updateOne(
+    {
+      _id: matchId,
+      status: { $in: [MatchStatus.AWAITING_EVIDENCE, MatchStatus.ANALYZING] },
     },
-  });
+    {
+      $set: {
+        provisionalResult:
+          result === "VICTORY" ? "WIN" : result === "DEFEAT" ? "LOSS" : null,
+      },
+    },
+  );
   await finalizeMatchEvidence(matchId);
-  return { submission, personalResult };
+  return {
+    submission,
+    personalResult:
+      result === "VICTORY"
+        ? ("win" as const)
+        : result === "DEFEAT"
+          ? ("loss" as const)
+          : ("unreadable" as const),
+  };
 }
 
-// Safe to call repeatedly (including while the chat refreshes). Only one
-// request can claim the match for finalization.
 export async function finalizeMatchEvidence(matchId: string) {
-  const evidence = await resultRepository.listForMatch(matchId);
-  const resultEvidence = evidence.filter(
+  const evidence = (await resultRepository.listForMatch(matchId)).filter(
     (item) => item.kind === EvidenceKind.POST_MATCH_RESULT,
   );
-  const resultUploaders = new Set(
-    resultEvidence.map((item) => String(item.userId)),
+  const match = await matchRepository.findById(matchId);
+  if (
+    !match ||
+    ![MatchStatus.AWAITING_EVIDENCE, MatchStatus.ANALYZING].includes(
+      match.status,
+    )
+  ) {
+    return;
+  }
+
+  const creatorEvidence = evidence.find(
+    (item) => String(item.userId) === String(match.creatorId),
   );
-  // Start finalization only after one result image exists for each captain.
-  // This deliberately ignores old/legacy evidence attached to the match.
-  if (resultEvidence.length >= 2 && resultUploaders.size === 2) {
-    if (resultEvidence.some((item) => !item.aiAnalysis)) {
-      console.info(
-        "[match-ai] Waiting for both single-image extractions before verification.",
-        { matchId },
-      );
-      return;
+  const opponentEvidence = evidence.find(
+    (item) => String(item.userId) === String(match.opponentCaptainId),
+  );
+  if (!creatorEvidence || !opponentEvidence) return;
+  if (!creatorEvidence.aiAnalysis || !opponentEvidence.aiAnalysis) return;
+
+  const creatorResult = parseScreenshotResult(
+    (creatorEvidence.aiAnalysis as { result?: unknown }).result,
+  );
+  const opponentResult = parseScreenshotResult(
+    (opponentEvidence.aiAnalysis as { result?: unknown }).result,
+  );
+  console.info("[match-ai] Finalizing extracted screenshot results.", {
+    matchId,
+    creatorResult,
+    opponentResult,
+    creatorExtractionFailed: Boolean(
+      (creatorEvidence.aiAnalysis as { extractionFailed?: unknown })
+        .extractionFailed,
+    ),
+    opponentExtractionFailed: Boolean(
+      (opponentEvidence.aiAnalysis as { extractionFailed?: unknown })
+        .extractionFailed,
+    ),
+  });
+  const outcome = decideTwoScreenshotOutcome(creatorResult, opponentResult);
+  if (outcome.kind === "winner") {
+    const winnerTeam = outcome.team;
+    try {
+      await adminSettleMatch(undefined, matchId, winnerTeam);
+    } catch (error) {
+      if (!(error instanceof AppError) || error.code !== "ALREADY_SETTLED") {
+        throw error;
+      }
     }
-    console.info(
-      "[match-ai] Both player screenshots found; claiming match for final analysis.",
-      { matchId },
-    );
-    const claimed = await MatchModel.findOneAndUpdate(
+    return;
+  }
+
+  const reason = `Held for admin review: ${outcome.reason}`;
+  await withTransaction(async (session) => {
+    const held = await MatchModel.findOneAndUpdate(
       {
         _id: matchId,
         status: { $in: [MatchStatus.AWAITING_EVIDENCE, MatchStatus.ANALYZING] },
-        aiAnalysisStartedAt: { $exists: false },
       },
       {
         $set: {
-          aiAnalysisStartedAt: new Date(),
-          status: MatchStatus.ANALYZING,
+          status: MatchStatus.DISPUTED,
+          provisionalResult: "HOLD",
+          aiWinnerRecommendation: reason,
+          completedAt: new Date(),
         },
       },
-      { returnDocument: "after" },
+      { returnDocument: "after", session },
     );
-    if (claimed) {
-      const creatorEvidence = resultEvidence.find(
-        (item) => String(item.userId) === String(claimed.creatorId),
-      );
-      const opponentEvidence = resultEvidence.find(
-        (item) => String(item.userId) === String(claimed.opponentCaptainId),
-      );
-      if (!creatorEvidence || !opponentEvidence) return;
-      const creatorResult = {
-        ...(creatorEvidence.aiAnalysis ?? {}),
-      } as VisionResult;
-      const opponentResult = {
-        ...(opponentEvidence.aiAnalysis ?? {}),
-      } as VisionResult;
-      const normalizedCreatorRoomId = normalizeRoomId(creatorResult.roomId);
-      const normalizedOpponentRoomId = normalizeRoomId(opponentResult.roomId);
-      creatorResult.roomId = normalizedCreatorRoomId || creatorResult.roomId;
-      opponentResult.roomId = normalizedOpponentRoomId || opponentResult.roomId;
-      console.info("[match-ai] Normalized room IDs for verification.", {
-        matchId,
-        creator: {
-          normalizedRoomId: normalizedCreatorRoomId ?? null,
-          rawRoomId: creatorEvidence.aiAnalysis?.roomId ?? null,
-        },
-        opponent: {
-          normalizedRoomId: normalizedOpponentRoomId ?? null,
-          rawRoomId: opponentEvidence.aiAnalysis?.roomId ?? null,
-        },
-      });
-      const sameRoom = (left?: string, right?: string) => {
-        const a = normalizeRoomId(left);
-        const b = normalizeRoomId(right);
-        if (!a || !b) return false;
-        let matchingDigits = 0;
-        for (let index = 0; index < 7; index += 1) {
-          if (a[index] === b[index]) matchingDigits += 1;
-        }
-        return matchingDigits >= 4;
-      };
-      // Confidence is useful for observability, but it is not reliable enough
-      // to override two complete Vision API extractions.
-      const complete = (result?: VisionResult) =>
-        Boolean(
-          result && normalizeRoomId(result.roomId) && result.winnerIGN?.trim(),
-        );
-      const participants = await matchRepository.listParticipants(matchId);
-      const creatorIgn = participants.find(
-        (player) => String(player.userId) === String(claimed.creatorId),
-      )?.ign;
-      const opponentIgn = participants.find(
-        (player) => String(player.userId) === String(claimed.opponentCaptainId),
-      )?.ign;
-      const validation =
-        creatorResult && opponentResult
-          ? validateMatchScreenshots({
-              first: creatorResult,
-              second: opponentResult,
-              players: [creatorIgn ?? "", opponentIgn ?? ""],
-            })
-          : undefined;
-      const roomIdsReadable = Boolean(
-        normalizeRoomId(creatorResult.roomId) &&
-        normalizeRoomId(opponentResult.roomId),
-      );
-      const roomIdsMatch = sameRoom(
-        creatorResult.roomId,
-        opponentResult.roomId,
-      );
-      const common =
-        complete(creatorResult) &&
-        complete(opponentResult) &&
-        roomIdsMatch &&
-        validation?.valid;
-      const creatorWon = common && validation?.winner === creatorIgn;
-      const opponentWon = common && validation?.winner === opponentIgn;
-      const winnerTeam = creatorWon ? "A" : opponentWon ? "B" : undefined;
-      console.info("[match-ai] Final verification inputs and checks.", {
-        matchId,
-        creator: {
-          roomId: creatorResult?.roomId,
-          winnerIGN: creatorResult?.winnerIGN,
-          confidence: creatorResult?.confidence ?? null,
-        },
-        opponent: {
-          roomId: opponentResult?.roomId,
-          winnerIGN: opponentResult?.winnerIGN,
-          confidence: opponentResult?.confidence ?? null,
-        },
-        snapshotPlayers: { creatorIgn, opponentIgn },
-        checks: {
-          sameRoom: roomIdsMatch,
-          sameRegisteredWinner: Boolean(validation?.valid),
-          validationReason: validation?.reason ?? null,
-          creatorWon,
-          opponentWon,
-        },
-      });
-      if (winnerTeam) {
-        claimed.aiWinnerRecommendation = `Team ${winnerTeam}`;
-        claimed.aiAnalysis = {
-          individual: [creatorResult, opponentResult],
-          final: validation,
-          verification: "matched",
-        };
-        claimed.provisionalResult = creatorWon ? "WIN" : "LOSS";
-        await claimed.save();
-        console.info(
-          "[match-ai] Results agree; automatically settling the match.",
-          { matchId, winnerTeam },
-        );
-        try {
-          await adminSettleMatch(
-            undefined,
-            matchId,
-            winnerTeam,
-            normalizeRoomId(creatorResult.roomId),
-          );
-        } catch (error) {
-          if (error instanceof AppError && error.code === "REUSED_ROOM_ID") {
-            claimed.aiWinnerRecommendation = "held for reused room ID review";
-            claimed.aiAnalysis = {
-              individual: [creatorResult, opponentResult],
-              final: validation,
-              verification: "room ID already verified for another match",
-            };
-            claimed.provisionalResult = "HOLD";
-            claimed.status = MatchStatus.DISPUTED;
-            claimed.completedAt = new Date();
-            await claimed.save();
-            console.warn(
-              "[match-ai] Settlement blocked: room ID was already verified.",
-              { matchId, roomId: normalizeRoomId(creatorResult.roomId) },
-            );
-            return;
-          }
-          throw error;
-        }
-      } else if (roomIdsReadable && !roomIdsMatch) {
-        const rejectedSubmission = resultEvidence[0];
-        const rejectedUserId = String(rejectedSubmission.userId);
-        const reason = "room IDs differ";
-        await evidenceAttemptRepository.recordFailure({
-          matchId,
-          userId: rejectedUserId,
+    if (!held) return;
+    await resultRepository.retainForAdminReview(matchId, session);
+    await auditRepository.write(
+      {
+        action: "match.evidence.admin_review_required",
+        entityType: "Match",
+        entityId: matchId,
+        metadata: {
           reason,
-        });
-        const attempts = await evidenceAttemptRepository.countFailures(
-          matchId,
-          rejectedUserId,
-        );
+          creatorResult,
+          opponentResult,
+          evidenceIds: [
+            String(creatorEvidence._id),
+            String(opponentEvidence._id),
+          ],
+        },
+      },
+      session,
+    );
+  });
+}
 
-        if (attempts >= 3) {
-          claimed.aiWinnerRecommendation =
-            "held after repeated room ID mismatches";
-          claimed.aiAnalysis = {
-            individual: [creatorResult, opponentResult],
-            final: validation,
-            verification: "room IDs differ after maximum screenshot retries",
-          };
-          claimed.provisionalResult = "HOLD";
-          claimed.status = MatchStatus.DISPUTED;
-          claimed.completedAt = new Date();
-          await claimed.save();
-          await auditRepository.write({
-            action: "match.evidence.admin_review_required",
-            entityType: "Match",
-            entityId: matchId,
-            metadata: {
-              reason,
-              rejectedUserId,
-              attempts,
-            },
-          });
-          console.warn(
-            "[match-ai] Repeated room ID mismatch reached the upload limit; match placed on admin hold.",
-            { matchId, rejectedUserId, attempts },
-          );
-          return;
-        }
+export async function expireMatchEvidenceDeadline(matchId: string) {
+  await connectDb();
+  const now = new Date();
+  const decision = await withTransaction(async (session) => {
+    const match = await matchRepository.findById(matchId, session);
+    if (!match) throw new AppError("Match not found.", "NOT_FOUND", 404);
+    const existingDeadlineOutcome =
+      match.status === MatchStatus.DISPUTED &&
+      match.aiWinnerRecommendation?.startsWith("Deadline expired:");
+    const existingDeadlineWin =
+      existingDeadlineOutcome &&
+      match.aiWinnerRecommendation?.startsWith(
+        "Deadline expired: lone VICTORY",
+      );
+    if (
+      !existingDeadlineWin &&
+      (![MatchStatus.AWAITING_EVIDENCE, MatchStatus.ANALYZING].includes(
+        match.status,
+      ) ||
+        !match.evidenceDeadlineAt ||
+        match.evidenceDeadlineAt > now)
+    ) {
+      return { kind: "none" as const };
+    }
 
-        try {
-          await deletePrivateMedia(rejectedSubmission.blobPathname);
-        } catch (error) {
-          console.error(
-            "[match-ai] Could not remove room-mismatched screenshot upload.",
-            {
-              matchId,
-              evidenceId: String(rejectedSubmission._id),
-              error: error instanceof Error ? error.message : "Unknown error",
-            },
-          );
-        }
-        await resultRepository.deleteManyByIds([
-          String(rejectedSubmission._id),
-        ]);
-        await MatchModel.findByIdAndUpdate(matchId, {
-          $set: {
-            status: MatchStatus.AWAITING_EVIDENCE,
-            provisionalResult: null,
-          },
-          $unset: {
-            aiAnalysisStartedAt: 1,
-            aiAnalysis: 1,
-            aiWinnerRecommendation: 1,
-          },
-        });
-        console.info(
-          "[match-ai] Room IDs did not match; rejected the latest screenshot and reopened uploads.",
-          { matchId, rejectedUserId, attempts },
-        );
+    const evidence = (
+      await resultRepository.listForMatch(matchId, session)
+    ).filter((item) => item.kind === EvidenceKind.POST_MATCH_RESULT);
+    if (evidence.length === 0) {
+      if (!match.acceptedStake || !match.opponentCaptainId) {
         throw new AppError(
-          "Can't find detail, upload again.",
-          "SCREENSHOT_REUPLOAD_REQUIRED",
-          422,
-        );
-      } else {
-        claimed.aiWinnerRecommendation = "held for admin review";
-        claimed.aiAnalysis = {
-          individual: [creatorResult, opponentResult],
-          final: validation,
-          verification: "conflicting or invalid room/winner evidence",
-        };
-        claimed.provisionalResult = "HOLD";
-        claimed.status = MatchStatus.DISPUTED;
-        claimed.completedAt = new Date();
-        await claimed.save();
-        console.warn(
-          "[match-ai] Results are unclear or conflicting; match placed on admin hold.",
-          { matchId },
+          "Cannot refund a match with missing stake or opponent details.",
+          "MATCH_NOT_READY",
         );
       }
-    } else {
-      console.info(
-        "[match-ai] Match analysis was already claimed by another request.",
-        { matchId },
+      const participantIds = [
+        String(match.creatorId),
+        String(match.opponentCaptainId),
+      ];
+      for (const userId of participantIds) {
+        await applyLedger({
+          userId,
+          type: CoinTxnType.STAKE_REFUND,
+          amount: match.acceptedStake,
+          availableDelta: match.acceptedStake,
+          lockedDelta: -match.acceptedStake,
+          referenceType: "Match",
+          referenceId: matchId,
+          idempotencyKey: `evidence-deadline-refund:${matchId}:${userId}`,
+          metadata: { reason: "no_screenshots_before_deadline" },
+          session,
+        });
+      }
+      match.status = MatchStatus.CANCELLED;
+      match.completedAt = now;
+      match.winnerTeam = null;
+      match.winnerPayout = 0;
+      match.platformFeeAmount = 0;
+      match.aiWinnerRecommendation =
+        "Deadline expired: no screenshots submitted. Match disqualified and both players' NV Tokens have been returned.";
+      await match.save({ session });
+      await auditRepository.write(
+        {
+          action: "match.evidence_deadline_disqualified",
+          entityType: "Match",
+          entityId: matchId,
+          metadata: { refundedParticipantIds: participantIds },
+        },
+        session,
       );
+      return { kind: "disqualified" as const };
     }
-  } else {
-    console.info(
-      "[match-ai] Waiting for one result screenshot from each player.",
-      {
-        matchId,
-        screenshotCount: resultEvidence.length,
-        uploadedByPlayerCount: resultUploaders.size,
-      },
+    if (evidence.length !== 1) {
+      if (evidence.length > 1) {
+        await resultRepository.markUnanalyzedAsUnavailable(matchId, session);
+      }
+      return {
+        kind: evidence.length > 1 ? ("finalize" as const) : ("none" as const),
+      };
+    }
+
+    const submission = evidence[0];
+    const result = parseScreenshotResult(
+      (submission.aiAnalysis as { result?: unknown } | undefined)?.result,
     );
+    const submittedBy = String(submission.userId);
+    const winnerTeam: "A" | "B" | undefined =
+      submittedBy === String(match.creatorId)
+        ? "A"
+        : submittedBy === String(match.opponentCaptainId)
+          ? "B"
+          : undefined;
+    if (decideDeadlineOutcome(result) === "award" && winnerTeam) {
+      if (!existingDeadlineWin) {
+        match.status = MatchStatus.DISPUTED;
+        match.provisionalResult = "WIN";
+        match.aiWinnerRecommendation =
+          "Deadline expired: lone VICTORY screenshot awarded automatically.";
+        await match.save({ session });
+      }
+      return { kind: "award" as const, winnerTeam };
+    }
+
+    match.status = MatchStatus.DISPUTED;
+    match.provisionalResult = "HOLD";
+    match.aiWinnerRecommendation =
+      result === "DEFEAT"
+        ? "Deadline expired: lone DEFEAT screenshot held for admin review."
+        : result === "UNREADABLE"
+          ? "Deadline expired: result could not be determined; held for admin review."
+          : "Deadline expired: screenshot uploader did not match a participant; held for admin review.";
+    match.completedAt = now;
+    await match.save({ session });
+    await resultRepository.retainForAdminReview(matchId, session);
+    await auditRepository.write(
+      {
+        action: "match.evidence.admin_review_required",
+        entityType: "Match",
+        entityId: matchId,
+        metadata: {
+          reason: "evidence_deadline",
+          result,
+          submittedBy,
+        },
+      },
+      session,
+    );
+    return { kind: "review" as const, result };
+  });
+
+  if (decision.kind === "award") {
+    try {
+      await adminSettleMatch(undefined, matchId, decision.winnerTeam);
+    } catch (error) {
+      if (!(error instanceof AppError) || error.code !== "ALREADY_SETTLED") {
+        throw error;
+      }
+    }
+  } else if (decision.kind === "finalize") {
+    await finalizeMatchEvidence(matchId);
   }
+}
+
+export async function processExpiredMatchEvidenceDeadlines() {
+  await connectDb();
+  const expired = await matchRepository.listExpiredEvidenceDeadlines(
+    new Date(),
+  );
+  let processed = 0;
+  for (const match of expired) {
+    await expireMatchEvidenceDeadline(String(match._id));
+    processed += 1;
+  }
+  return { processed };
 }
 
 export async function confirmMatchCompleted(userId: string, matchId: string) {
@@ -932,6 +854,7 @@ export async function confirmMatchCompleted(userId: string, matchId: string) {
       $set: {
         status: MatchStatus.AWAITING_EVIDENCE,
         completedAt: completionTime,
+        evidenceDeadlineAt: getMatchEvidenceDeadline(completionTime),
       },
     },
     { returnDocument: "after" },
@@ -941,49 +864,20 @@ export async function confirmMatchCompleted(userId: string, matchId: string) {
     { matchId },
     {
       $max: {
-        expiresAt: new Date(completionTime.getTime() + 3 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(
+          completionTime.getTime() +
+            MATCH_HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+        ),
       },
     },
   );
   return updated;
 }
 
-export async function undoMatchCompleted(userId: string, matchId: string) {
-  await connectDb();
-  const match = await matchRepository.findById(matchId);
-  if (!match || !match.opponentCaptainId)
-    throw new AppError("Match is not ready for completion.", "MATCH_NOT_READY");
-  if (
-    String(match.creatorId) !== userId &&
-    String(match.opponentCaptainId) !== userId
-  ) {
-    throw new AppError(
-      "Only match participants can restart chat.",
-      "FORBIDDEN",
-      403,
-    );
-  }
-  if (
-    match.status !== MatchStatus.ACCEPTED &&
-    match.status !== MatchStatus.LIVE
-  ) {
-    throw new AppError(
-      "Chat cannot be restarted after both players confirmed completion.",
-      "CHAT_RESTART_UNAVAILABLE",
-    );
-  }
-  const updated = await MatchModel.findOneAndUpdate(
-    { _id: matchId, status: { $in: [MatchStatus.ACCEPTED, MatchStatus.LIVE] } },
-    { $pull: { completedBy: userId } },
-    { returnDocument: "after" },
-  );
-  if (!updated) throw new AppError("Match not found.", "NOT_FOUND", 404);
-  return updated;
-}
-
 // This is intentionally safe to call from every chat read/write. There is no
 // separate scheduler required for the timeout: the first request after the
 // deadline settles the expired match, and the ledger keys keep retries safe.
+
 export async function expireMatchAfterChatTimeout(matchId: string) {
   await connectDb();
   return withTransaction(async (session) => {
@@ -999,7 +893,7 @@ export async function expireMatchAfterChatTimeout(matchId: string) {
 
     const expiresAt =
       match.chatExpiresAt ??
-      new Date(new Date(match.updatedAt).getTime() + 24 * 60 * 60 * 1000);
+      new Date(new Date(match.updatedAt).getTime() + CLASH_CHAT_EXPIRY_MS);
     if (expiresAt > new Date()) return match;
 
     if (!match.acceptedStake || !match.opponentCaptainId) return match;
@@ -1159,6 +1053,15 @@ export async function adminSettleMatch(
     match.completedAt = completedAt;
     match.seasonId = season._id;
     await match.save({ session });
+    const screenshotExpiresAt = new Date(
+      completedAt.getTime() +
+        MEDIA_DEFAULTS.tempRetentionDays * 24 * 60 * 60 * 1000,
+    );
+    await resultRepository.releaseAdminReviewRetention(
+      matchId,
+      screenshotExpiresAt,
+      session,
+    );
     // Only a decisive result counts as a played match in the rankings.
     if (winnerId) {
       await userRepository.recordSettledMatchResult(
@@ -1173,7 +1076,8 @@ export async function adminSettleMatch(
       {
         $max: {
           expiresAt: new Date(
-            match.completedAt.getTime() + 3 * 24 * 60 * 60 * 1000,
+            match.completedAt.getTime() +
+              MATCH_HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000,
           ),
         },
       },
@@ -1207,6 +1111,7 @@ const getCachedOpenMatches = unstable_cache(
 
     return matches.map((match) => {
       const rules = String(match.rules ?? "");
+
       return {
         _id: String(match._id),
         creatorIgn:
@@ -1330,7 +1235,9 @@ export async function listActiveMatchesForUser(userId: string) {
 
 export async function pruneExpiredMatchHistory(userId?: string) {
   await connectDb();
-  const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(
+    Date.now() - MATCH_HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  );
   const matches = await MatchModel.find({
     ...(userId
       ? { $or: [{ creatorId: userId }, { opponentCaptainId: userId }] }
@@ -1502,15 +1409,18 @@ export async function getMatchForUser(
     match.status === MatchStatus.SETTLED ||
     match.status === MatchStatus.CANCELLED;
   const isParticipant = participants.some((p) => String(p.userId) === userId);
-  const [identityByUserId, evidence, settings] = await Promise.all([
+
+  const [identityByUserId, evidence] = await Promise.all([
     getCurrentUserIdentities(
-      isHistorical ? [] : participants.map((participant) => String(participant.userId)),
+      isHistorical
+        ? []
+        : participants.map((participant) => String(participant.userId)),
     ),
     isParticipant || isAdmin
       ? resultRepository.listForMatch(matchId)
       : Promise.resolve([]),
-    getPlatformSettings(),
   ]);
+
   return {
     match: {
       ...JSON.parse(JSON.stringify(match)),
@@ -1531,6 +1441,5 @@ export async function getMatchForUser(
           "Player"),
     })),
     evidence: isParticipant || isAdmin ? evidence : [],
-    settings,
   };
 }

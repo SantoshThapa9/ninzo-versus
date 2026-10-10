@@ -3,16 +3,19 @@ import { connectDb, withTransaction } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
 import { todayUtcStart } from "@/lib/utils";
 import { isValidTokenAmount } from "@/lib/utils";
-import { ledgerRepository, withdrawalRepository } from "@/repositories/finance.repository";
+import {
+  ledgerRepository,
+  withdrawalRepository,
+} from "@/repositories/finance.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { applyLedger } from "@/services/wallet.service";
-import { getPlatformSettings } from "@/services/settings.service";
 import { auditRepository } from "@/repositories/ops.repository";
 import { CoinTxnType, WithdrawalStatus } from "@/types/enums";
 import { WithdrawalModel } from "@/models/withdrawal";
 import { formatTokenActivity } from "@/lib/token-activity";
 import mongoose from "mongoose";
 import { upiIdSchema } from "@/services/upi.service";
+import { ECONOMY_DEFAULTS } from "@/config/defaults";
 
 const requestSchema = z.object({
   coins: z.number().positive().refine(isValidTokenAmount, {
@@ -23,7 +26,7 @@ const requestSchema = z.object({
 
 export async function requestWithdrawal(userId: string, raw: unknown) {
   const input = requestSchema.parse(raw);
-  const settings = await getPlatformSettings();
+  const settings = ECONOMY_DEFAULTS;
   if (input.coins < settings.minWithdrawalCoins) {
     throw new AppError(
       `Minimum reward redemption is ${settings.minWithdrawalCoins} NV Tokens.`,
@@ -42,7 +45,10 @@ export async function requestWithdrawal(userId: string, raw: unknown) {
       );
     }
     if (user.lastWithdrawalAt && user.lastWithdrawalAt >= todayUtcStart()) {
-      throw new AppError("Only one reward redemption request is allowed per day.", "DAILY_LIMIT");
+      throw new AppError(
+        "Only one reward redemption request is allowed per day.",
+        "DAILY_LIMIT",
+      );
     }
 
     if (user.upiId !== input.upiId) {
@@ -88,13 +94,21 @@ export async function reviewWithdrawal(
 ) {
   await connectDb();
   const withdrawal = await withdrawalRepository.findById(withdrawalId);
-  if (!withdrawal) throw new AppError("Reward redemption request not found.", "NOT_FOUND", 404);
+  if (!withdrawal)
+    throw new AppError(
+      "Reward redemption request not found.",
+      "NOT_FOUND",
+      404,
+    );
 
   if (action === "reject") {
     await withTransaction(async (session) => {
       const fresh = await withdrawalRepository.findById(withdrawalId, session);
       if (!fresh || fresh.status !== WithdrawalStatus.PENDING) {
-        throw new AppError("Reward redemption request cannot be declined.", "INVALID_STATUS");
+        throw new AppError(
+          "Reward redemption request cannot be declined.",
+          "INVALID_STATUS",
+        );
       }
       fresh.status = WithdrawalStatus.REJECTED;
       fresh.adminNote = note;
@@ -116,13 +130,15 @@ export async function reviewWithdrawal(
   } else if (action === "approve") {
     withdrawal.status = WithdrawalStatus.APPROVED;
     withdrawal.adminNote = note;
-    withdrawal.processedBy = adminId as unknown as typeof withdrawal.processedBy;
+    withdrawal.processedBy =
+      adminId as unknown as typeof withdrawal.processedBy;
     await withdrawal.save();
   } else {
     withdrawal.status = WithdrawalStatus.PAID;
     withdrawal.adminNote = note;
     withdrawal.processedAt = new Date();
-    withdrawal.processedBy = adminId as unknown as typeof withdrawal.processedBy;
+    withdrawal.processedBy =
+      adminId as unknown as typeof withdrawal.processedBy;
     await withdrawal.save();
   }
 
@@ -146,8 +162,14 @@ type TokenFlowCursor = { createdAt: string; id: string };
 function parseTokenFlowCursor(cursor?: string): TokenFlowCursor | undefined {
   if (!cursor) return undefined;
   try {
-    const value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as TokenFlowCursor;
-    if (!value.createdAt || !mongoose.isObjectIdOrHexString(value.id) || Number.isNaN(new Date(value.createdAt).getTime())) {
+    const value = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    ) as TokenFlowCursor;
+    if (
+      !value.createdAt ||
+      !mongoose.isObjectIdOrHexString(value.id) ||
+      Number.isNaN(new Date(value.createdAt).getTime())
+    ) {
       return undefined;
     }
     return value;
@@ -156,7 +178,9 @@ function parseTokenFlowCursor(cursor?: string): TokenFlowCursor | undefined {
   }
 }
 
-function serializeTokenFlow(transactions: Awaited<ReturnType<typeof ledgerRepository.listForUserPage>>) {
+function serializeTokenFlow(
+  transactions: Awaited<ReturnType<typeof ledgerRepository.listForUserPage>>,
+) {
   return transactions.map((transaction) => ({
     id: String(transaction._id),
     label: formatTokenActivity(transaction.type),
@@ -167,35 +191,66 @@ function serializeTokenFlow(transactions: Awaited<ReturnType<typeof ledgerReposi
 }
 
 function nextTokenFlowCursor(transaction: { _id: unknown; createdAt: Date }) {
-  return Buffer.from(JSON.stringify({ id: String(transaction._id), createdAt: transaction.createdAt.toISOString() })).toString("base64url");
+  return Buffer.from(
+    JSON.stringify({
+      id: String(transaction._id),
+      createdAt: transaction.createdAt.toISOString(),
+    }),
+  ).toString("base64url");
 }
 
-export async function getWithdrawalTokenFlow(withdrawalId: string, cursor?: string) {
+export async function getWithdrawalTokenFlow(
+  withdrawalId: string,
+  cursor?: string,
+) {
   await connectDb();
   const withdrawal = await withdrawalRepository.findById(withdrawalId);
-  if (!withdrawal) throw new AppError("Reward redemption request not found.", "NOT_FOUND", 404);
+  if (!withdrawal)
+    throw new AppError(
+      "Reward redemption request not found.",
+      "NOT_FOUND",
+      404,
+    );
   const parsedCursor = parseTokenFlowCursor(cursor);
   const transactions = await ledgerRepository.listForUserPage(
     String(withdrawal.userId),
-    parsedCursor ? { id: parsedCursor.id, createdAt: new Date(parsedCursor.createdAt) } : undefined,
+    parsedCursor
+      ? { id: parsedCursor.id, createdAt: new Date(parsedCursor.createdAt) }
+      : undefined,
     10,
   );
   return {
     transactions: serializeTokenFlow(transactions),
     // The next request confirms whether another page exists without loading
     // an extra transaction ahead of the admin's explicit request.
-    nextCursor: transactions.length === 10 ? nextTokenFlowCursor(transactions[transactions.length - 1]) : null,
+    nextCursor:
+      transactions.length === 10
+        ? nextTokenFlowCursor(transactions[transactions.length - 1])
+        : null,
   };
 }
 
 /** Minimal admin review data derived from the immutable wallet ledger. */
 export async function listWithdrawalReviews() {
   await connectDb();
-  const withdrawals = await WithdrawalModel.find().sort({ createdAt: -1 }).limit(80).lean();
-  const userIds = [...new Set(withdrawals.map((withdrawal) => String(withdrawal.userId)))];
+  const withdrawals = await WithdrawalModel.find()
+    .sort({ createdAt: -1 })
+    .limit(80)
+    .lean();
+  const userIds = [
+    ...new Set(withdrawals.map((withdrawal) => String(withdrawal.userId))),
+  ];
   const [users, flows] = await Promise.all([
     userRepository.findByIds(userIds),
-    Promise.all(userIds.map(async (userId) => [userId, await ledgerRepository.listForUserPage(userId, undefined, 10)] as const)),
+    Promise.all(
+      userIds.map(
+        async (userId) =>
+          [
+            userId,
+            await ledgerRepository.listForUserPage(userId, undefined, 10),
+          ] as const,
+      ),
+    ),
   ]);
   const usersById = new Map(users.map((user) => [String(user._id), user]));
   const flowsByUserId = new Map(flows);
@@ -214,7 +269,10 @@ export async function listWithdrawalReviews() {
           }
         : null,
       flow: serializeTokenFlow(flow),
-      nextCursor: transactions.length === 10 ? nextTokenFlowCursor(flow[flow.length - 1]) : null,
+      nextCursor:
+        transactions.length === 10
+          ? nextTokenFlowCursor(flow[flow.length - 1])
+          : null,
     };
   });
 }

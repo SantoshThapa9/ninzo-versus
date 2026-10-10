@@ -12,9 +12,11 @@ import {
   createClashMatch,
   deleteOpenClashMatch,
   setMatchLive,
-  undoMatchCompleted,
 } from "@/services/match.service";
-import { notifyChallengeAccepted } from "@/services/push-notification.service";
+import {
+  notifyChallengeAccepted,
+  notifyMatchCompleted,
+} from "@/services/push-notification.service";
 import { getCurrentUserIdentity } from "@/services/player-profile.service";
 import { EvidenceKind } from "@/types/enums";
 
@@ -29,10 +31,15 @@ export async function createMatchAction(
   try {
     const session = await requireSession();
     await rateLimit(`match:create:${session.user.id}`, 6, 60);
-    const onlyHeadshots = formData.get("onlyHeadshots") === "on";
+
+    const onlyHeadshots = formData.get("onlyHeadshots") === "yes";
+
     const characterSkillAllowed =
-      formData.get("characterSkillAllowed") === "on";
-    const rules = `Only headshots: ${onlyHeadshots ? "Yes" : "No"}. Character skill allowed: ${characterSkillAllowed ? "Yes" : "No"}.`;
+      formData.get("characterSkillAllowed") === "yes";
+    const rules = [
+      `Only headshots: ${onlyHeadshots ? "Yes" : "No"}.`,
+      `Character skill allowed: ${characterSkillAllowed ? "Yes" : "No"}.`,
+    ].join("\n");
 
     const match = await createClashMatch(session.user.id, {
       format: Number(formData.get("format")),
@@ -52,7 +59,9 @@ export async function createMatchAction(
       message: error instanceof Error ? error.message : String(error),
       fields:
         typeof error === "object" && error !== null && "errors" in error
-          ? Object.keys((error as { errors?: Record<string, unknown> }).errors ?? {})
+          ? Object.keys(
+              (error as { errors?: Record<string, unknown> }).errors ?? {},
+            )
           : undefined,
     });
     return { error: toErrorMessage(error) };
@@ -75,10 +84,15 @@ export async function acceptMatchAction(
       const opponentIgn =
         (await getCurrentUserIdentity(session.user.id)).ign || "An opponent";
       // A notification failure must never reverse a successfully accepted match.
-      await notifyChallengeAccepted(
+      void notifyChallengeAccepted(
         String(match.creatorId),
         opponentIgn,
         String(match._id),
+      ).catch((error) =>
+        console.error("[push] Failed to queue challenge acceptance notification.", {
+          matchId: String(match._id),
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
     }
     invalidatePublicOpenMatches();
@@ -129,7 +143,19 @@ export async function confirmMatchCompletedAction(
   try {
     const session = await requireSession();
     const matchId = String(formData.get("matchId") ?? "");
-    await confirmMatchCompleted(session.user.id, matchId);
+    const match = await confirmMatchCompleted(session.user.id, matchId);
+    const recipientId =
+      String(match.creatorId) === session.user.id
+        ? String(match.opponentCaptainId)
+        : String(match.creatorId);
+    const senderIgn =
+      (await getCurrentUserIdentity(session.user.id)).ign || "A player";
+    void notifyMatchCompleted(recipientId, senderIgn, matchId).catch((error) =>
+      console.error("[push] Failed to queue match completion notification.", {
+        matchId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
     revalidatePath(`/clash/${matchId}`);
     revalidatePath("/challenges");
     redirect(`/clash/${matchId}`);
@@ -139,23 +165,7 @@ export async function confirmMatchCompletedAction(
   }
 }
 
-export async function undoMatchCompletedAction(
-  _prev: { error?: string; ok?: boolean } | null,
-  formData: FormData,
-) {
-  try {
-    const session = await requireSession();
-    const matchId = String(formData.get("matchId") ?? "");
-    await undoMatchCompleted(session.user.id, matchId);
-    revalidatePath(`/clash/${matchId}`);
-    revalidatePath("/challenges");
-    redirect(`/clash/${matchId}`);
-  } catch (error) {
-    if (isNextRedirect(error)) throw error;
-    return { error: toErrorMessage(error) };
-  }
-}
-
+//
 export async function adminSettleAction(formData: FormData) {
   const session = await requireAdmin();
   const winnerTeam = String(formData.get("winnerTeam") ?? "");

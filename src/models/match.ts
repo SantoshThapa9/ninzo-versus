@@ -1,15 +1,19 @@
 import { Schema, model, models, type InferSchemaType, type Types } from "mongoose";
-import { ECONOMY_DEFAULTS } from "@/config/defaults";
+import {
+  ECONOMY_DEFAULTS,
+  MATCH_HISTORY_RETENTION_DAYS,
+} from "@/config/defaults";
 import { EVENT_ROUNDS, MatchStatus } from "@/types/enums";
 
-const evidenceFailuresField = {
-  type: [
-    {
-      userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-      count: { type: Number, required: true, default: 0, min: 0 },
-    },
-  ],
-  default: [],
+const matchHistoryTtlIndexOptions = {
+  expireAfterSeconds: MATCH_HISTORY_RETENTION_DAYS * 24 * 60 * 60,
+  partialFilterExpression: {
+    $or: [
+      { status: MatchStatus.SETTLED },
+      { status: MatchStatus.CANCELLED },
+    ],
+  },
+  name: "matches_terminal_completedAt_ttl",
 };
 
 const chatNotificationMutedByField = {
@@ -56,28 +60,44 @@ const MatchSchema = new Schema(
     // user's platform-wide push subscription or other Clash conversations.
     chatNotificationMutedBy: chatNotificationMutedByField,
     completedBy: { type: [{ type: Schema.Types.ObjectId, ref: "User" }], default: [] },
-    aiAnalysisStartedAt: { type: Date },
     aiWinnerRecommendation: { type: String },
-    aiAnalysis: { type: Schema.Types.Mixed },
-    evidenceFailures: evidenceFailuresField,
+    evidenceDeadlineAt: { type: Date },
+    evidenceSubmissionVersion: { type: Number, default: 0 },
     warningAcknowledgedAt: { type: Date },
   },
   { timestamps: true },
 );
 
 MatchSchema.index({ status: 1, createdAt: -1 });
+MatchSchema.index({ status: 1, evidenceDeadlineAt: 1 });
 MatchSchema.index({ creatorId: 1, status: 1 });
+MatchSchema.index({ opponentCaptainId: 1, status: 1 });
 MatchSchema.index({ seasonId: 1, status: 1, completedAt: -1 });
+MatchSchema.index({ completedAt: 1 }, matchHistoryTtlIndexOptions);
 
 export type MatchDoc = InferSchemaType<typeof MatchSchema> & { _id: Types.ObjectId };
 
 // Next.js development hot reload reuses Mongoose models. Add fields introduced
-// during a reload to that cached schema too, otherwise Mongoose silently strips
-// the new field from updates and the retry count appears to reset on refresh.
+// during a reload so updates are not silently stripped.
 const cachedMatchModel = models.Match;
 if (cachedMatchModel) {
-  if (!cachedMatchModel.schema.path("evidenceFailures")) {
-    cachedMatchModel.schema.add({ evidenceFailures: evidenceFailuresField });
+  if (
+    !cachedMatchModel.schema
+      .indexes()
+      .some(([, options]) => options.name === matchHistoryTtlIndexOptions.name)
+  ) {
+    cachedMatchModel.schema.index(
+      { completedAt: 1 },
+      matchHistoryTtlIndexOptions,
+    );
+  }
+  if (!cachedMatchModel.schema.path("evidenceDeadlineAt")) {
+    cachedMatchModel.schema.add({ evidenceDeadlineAt: { type: Date } });
+  }
+  if (!cachedMatchModel.schema.path("evidenceSubmissionVersion")) {
+    cachedMatchModel.schema.add({
+      evidenceSubmissionVersion: { type: Number, default: 0 },
+    });
   }
   if (!cachedMatchModel.schema.path("seasonId")) {
     cachedMatchModel.schema.add({

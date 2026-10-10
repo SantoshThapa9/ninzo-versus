@@ -59,6 +59,7 @@ export async function purgeExpiredMedia() {
   const now = new Date();
   const results = await ResultSubmissionModel.find({
     expiresAt: { $lte: now },
+    retainForDispute: { $ne: true },
   });
   const evidence = await SupportEvidenceModel.find({
     expiresAt: { $lte: now },

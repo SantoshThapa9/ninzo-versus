@@ -16,6 +16,7 @@ const SupportEvidenceSchema = new Schema(
 
 // Kept until the Blob cleanup succeeds so failed Blob deletions can retry.
 SupportEvidenceSchema.index({ expiresAt: 1 });
+SupportEvidenceSchema.index({ ticketId: 1, createdAt: 1 });
 
 export type SupportEvidenceDoc = InferSchemaType<typeof SupportEvidenceSchema> & {
   _id: Types.ObjectId;

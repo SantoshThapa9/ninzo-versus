@@ -2,7 +2,7 @@ export const ECONOMY_OVERRIDES = {
   nvCoinsPerRupee: 1,
   minDepositCoins: 10,
   minWithdrawalCoins: 10,
-  minMatchStakeCoins: 0.01,
+  minMatchStakeCoins: 0.1,
   depositFeePercent: 0,
   withdrawalFeePercent: 0,
   platformFeePercent: 5,
@@ -13,32 +13,26 @@ export const ECONOMY_DEFAULTS = {
   maxWithdrawalsPerDay: 1,
 } as const;
 
-export function getEconomyConfig() {
-  return {
-    ...ECONOMY_DEFAULTS,
-    nvCoinsPerRupee: ECONOMY_OVERRIDES.nvCoinsPerRupee,
-    minDepositCoins: ECONOMY_OVERRIDES.minDepositCoins,
-    minWithdrawalCoins: ECONOMY_OVERRIDES.minWithdrawalCoins,
-    minMatchStakeCoins: ECONOMY_OVERRIDES.minMatchStakeCoins,
-    depositFeePercent: ECONOMY_OVERRIDES.depositFeePercent,
-    withdrawalFeePercent: ECONOMY_OVERRIDES.withdrawalFeePercent,
-    platformFeePercent: ECONOMY_OVERRIDES.platformFeePercent,
-  };
-}
-
-export const MEDIA_DEFAULTS = {
-  // Keep all private uploads (match and support evidence) for exactly three days.
-  // This is intentionally not an admin-configurable value: the purge cron relies
-  // on it to keep Blob storage bounded.
-  tempRetentionDays: 3,
+export const AI_DEFAULTS = {
+  visionModel: "gpt-6-luna",
+  chatModel: "gpt-6-luna",
 } as const;
 
+export const MEDIA_DEFAULTS = {
+  tempRetentionDays: 3,
+} as const; //auto delete to save storage
+
 export const CLASH_DEFAULTS = {
-  //curently only solo focus
-  teamSizes: [1] as const,
+  teamSizes: [1, 2, 4] as const,
   warning:
-    "Check the custom-room settings carefully. Intentionally changing room settings before the match may result in investigation and account penalties.",
+    "Check the custom-room settings carefully. Intentionally changing room settings before the match may result in account penalties.",
 };
+
+export const CLASH_CHAT_EXPIRY_MS = 12 * 60 * 60 * 1000;
+
+export const MATCH_EVIDENCE_DEADLINE_MS = 30 * 60 * 1000;
+
+export const MATCH_HISTORY_RETENTION_DAYS = 3;
 
 export const EVENT_FORMATS = ["solo", "duo", "squad"] as const;
 
@@ -53,8 +47,30 @@ export const DEFAULT_PRIZE_SPLIT = {
   firstPercent: 50,
   secondPercent: 30,
   thirdPercent: 10,
-} as const;
+} as const; //for events
+
+export const MONTHLY_RANK_PRIZE = 10; //in NV Token
 
 export const DAILY_FREE_REWARD_SCHEDULE = [
   0.05, 0.15, 0.3, 0.55, 0.85, 1.2, 1.9,
-] as const;
+] as const; //for a week
+
+export const TOTAL_WEEKLY_FREE_REWARD = DAILY_FREE_REWARD_SCHEDULE.reduce(
+  (sum, reward) => sum + reward,
+  0,
+);
+
+export const BLOCKED_WORDS_TEXT = `
+ma, madarchod, maderchod, behen, bhen,
+randi, randwa, bhosdi, bhosdike, chod,
+fuck, fucker, fucking, chut, choot, chutiya, chutiye, chud, chudai, chudayi, laude, lauda, lund, land, lnd, loda, lode, vosdk, vosdike, gandu, gand, gaand, bsdk, mki, mc, bc, maa, bhosda, rand, teri, tera, gey, gay, chakka, hizra, hijda, bap, papa, baap, ass, bhosadi, maki, maka, chinar, chinal, laure, re, pussy, vagina, dick, penis
+`; //for private chat
+
+export const RANK_MINIMUM_SCORES = {
+  Rookie: 0,
+  Elite: 5,
+  Champion: 10,
+  Mythic: 15,
+  Legend: 20,
+  Immortal: 25,
+} as const;

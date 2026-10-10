@@ -14,8 +14,8 @@ import { CoinTxnType, MatchStatus, UserRole } from "@/types/enums";
 import { getOrCreateSeasonForDate } from "@/services/season.service";
 import { applyLedger } from "@/services/wallet.service";
 import { getSeasonPlayerStatId } from "@/lib/season-player-stat";
+import { MONTHLY_RANK_PRIZE } from "@/config/defaults";
 
-const MONTHLY_RANK_PRIZE = 10;
 const SNAPSHOT_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
 type SeasonMatchStat = {

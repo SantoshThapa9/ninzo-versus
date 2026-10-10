@@ -20,10 +20,10 @@ function makeMessage(sender: ChatMessage["sender"], text: string): ChatMessage {
   };
 }
 
-function welcomeMessage(): ChatMessage {
+function welcomeMessage(displayName: string): ChatMessage {
   return makeMessage(
     "assistant",
-    "Hi! I’m Ninzo AI 👋 Chat in Hindi, English, or any language you prefer.",
+    `Hi ${displayName}! I’m Ninzo AI 👋 Chat in Hindi, English, or any language you prefer.`,
   );
 }
 
@@ -57,32 +57,36 @@ function subscribe(callback: () => void): () => void {
   };
 }
 
-function readMessages(snapshot: string): ChatMessage[] {
+function readMessages(snapshot: string, displayName: string): ChatMessage[] {
   if (!snapshot) {
-    return [welcomeMessage()];
+    return [welcomeMessage(displayName)];
   }
 
   try {
     const parsed = JSON.parse(snapshot) as ChatMessage[];
 
     if (!Array.isArray(parsed) || parsed.length === 0) {
-      return [welcomeMessage()];
+      return [welcomeMessage(displayName)];
     }
 
     return parsed;
   } catch {
-    return [welcomeMessage()];
+    return [welcomeMessage(displayName)];
   }
 }
 
-export function SupportChatbot() {
+export function SupportChatbot({
+  displayName,
+}: {
+  displayName?: string | null;
+}) {
   const storedChat = useSyncExternalStore(
     subscribe,
     getSnapshot,
     getServerSnapshot,
   );
 
-  const messages = readMessages(storedChat);
+  const messages = readMessages(storedChat, displayName?.trim() || "Guest");
 
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);

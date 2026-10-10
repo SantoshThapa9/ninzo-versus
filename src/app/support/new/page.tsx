@@ -47,10 +47,6 @@ export default function NewTicketPage() {
         </div>
 
         <div>
-          <Label htmlFor="ign">In Game Name</Label>
-          <Input id="ign" name="ign" />
-        </div>
-        <div>
           <Label htmlFor="summary">Issue or question</Label>
           <Textarea id="summary" name="summary" required />
         </div>

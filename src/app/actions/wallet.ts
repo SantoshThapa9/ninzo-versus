@@ -5,8 +5,10 @@ import { requireAdmin, requireSession } from "@/lib/auth/guards";
 import { toErrorMessage } from "@/lib/errors";
 import { rateLimit } from "@/lib/rate-limit";
 import { createDepositOrder } from "@/services/payment.service";
-import { requestWithdrawal, reviewWithdrawal } from "@/services/withdrawal.service";
-import { updatePlatformSettings } from "@/services/settings.service";
+import {
+  requestWithdrawal,
+  reviewWithdrawal,
+} from "@/services/withdrawal.service";
 import { saveProfile } from "@/services/player-profile.service";
 import { claimDailyFreeReward } from "@/services/wallet.service";
 
@@ -16,7 +18,10 @@ export async function createDepositAction(coins: number) {
   return createDepositOrder(session.user.id, coins);
 }
 
-export async function withdrawAction(_prev: { error?: string } | null, formData: FormData) {
+export async function withdrawAction(
+  _prev: { error?: string } | null,
+  formData: FormData,
+) {
   try {
     const session = await requireSession();
     await rateLimit(`withdraw:${session.user.id}`, 4, 60);
@@ -32,7 +37,13 @@ export async function withdrawAction(_prev: { error?: string } | null, formData:
 }
 
 export async function claimDailyFreeRewardAction(
-  prev: { error?: string; ok?: boolean; message?: string; rewardDay?: number; amount?: number } | null,
+  prev: {
+    error?: string;
+    ok?: boolean;
+    message?: string;
+    rewardDay?: number;
+    amount?: number;
+  } | null,
   formData: FormData,
 ) {
   try {
@@ -61,7 +72,10 @@ export async function reviewWithdrawalAction(formData: FormData) {
   await reviewWithdrawal(
     session.user.id,
     String(formData.get("withdrawalId") ?? ""),
-    String(formData.get("action") ?? "approve") as "approve" | "reject" | "paid",
+    String(formData.get("action") ?? "approve") as
+      | "approve"
+      | "reject"
+      | "paid",
     String(formData.get("note") ?? ""),
   );
   revalidatePath("/admin/withdrawals");
@@ -97,28 +111,12 @@ export async function saveProfileAction(
     return {
       ok: true,
       age: result.age,
-      message: result.age >= 18
-        ? "Profile saved. You can now use your UPI ID."
-        : "Age saved. UPI is available only to users 18 or older.",
+      message:
+        result.age >= 18
+          ? "Profile saved. You can now use your UPI ID."
+          : "Age saved. UPI is available only to users 18 or older.",
     };
   } catch (error) {
     return { error: toErrorMessage(error) };
   }
-}
-
-export async function saveSettingsAction(formData: FormData) {
-  await requireAdmin();
-  await updatePlatformSettings({
-    platformFeePercent: Number(formData.get("platformFeePercent")),
-    minDepositCoins: Number(formData.get("minDepositCoins")),
-    minWithdrawalCoins: Number(formData.get("minWithdrawalCoins")),
-    depositFeePercent: Number(formData.get("depositFeePercent")),
-    visionEnabled: formData.get("visionEnabled") === "on",
-    supportAiEnabled: formData.get("supportAiEnabled") === "on",
-    visionModel: String(formData.get("visionModel") ?? ""),
-    chatModel: String(formData.get("chatModel") ?? ""),
-    clashWarning: String(formData.get("clashWarning") ?? ""),
-  });
-  updateTag("platform-settings");
-  revalidatePath("/admin/ai");
 }

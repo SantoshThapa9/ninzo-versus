@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { connectDb } from "@/lib/db/mongoose";
 import { supportRepository } from "@/repositories/ops.repository";
+import { userRepository } from "@/repositories/user.repository";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,10 @@ export default async function SupportPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   await connectDb();
-  const tickets = await supportRepository.listForUser(session.user.id);
+  const [tickets, user] = await Promise.all([
+    supportRepository.listForUser(session.user.id),
+    userRepository.findByIdLean(session.user.id),
+  ]);
   return (
     <div className="grid gap-4">
       <div className="flex items-center justify-between">
@@ -22,7 +26,7 @@ export default async function SupportPage() {
         </Button>
       </div>
 
-      <SupportChatbot />
+      <SupportChatbot displayName={user?.displayName} />
 
       <p className="text-sm text-[var(--muted)]">
         AI chat is private to this conversation and does not create a support

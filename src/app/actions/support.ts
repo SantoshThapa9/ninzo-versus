@@ -5,9 +5,13 @@ import { redirect } from "next/navigation";
 import { requireAdmin, requireSession } from "@/lib/auth/guards";
 import { isNextRedirect, toErrorMessage } from "@/lib/errors";
 import { openTicket, sendTicketMessage } from "@/services/support.service";
-import { ReportType, SupportStatus } from "@/types/enums";
+import { ReportType } from "@/types/enums";
 import { SupportTicketModel } from "@/models/support-ticket";
-import { connectDb } from "@/lib/db/mongoose";
+import { connectDb, withTransaction } from "@/lib/db/mongoose";
+import { SupportMessageModel } from "@/models/support-message";
+import { SupportEvidenceModel } from "@/models/support-evidence";
+import { deletePrivateMedia } from "@/services/media.service";
+import { disputeRepository } from "@/repositories/ops.repository";
 
 export async function createTicketAction(_prev: { error?: string } | null, formData: FormData) {
   try {
@@ -17,7 +21,6 @@ export async function createTicketAction(_prev: { error?: string } | null, formD
       summary: String(formData.get("summary") ?? ""),
       matchId: String(formData.get("matchId") ?? "") || undefined,
       whatsappNumber: String(formData.get("whatsappNumber") ?? "") || undefined,
-      ign: String(formData.get("ign") ?? "") || undefined,
     });
     revalidatePath("/support");
     redirect(`/support/${String(ticket._id)}`);
@@ -43,14 +46,25 @@ export async function sendMessageAction(_prev: { error?: string } | null, formDa
   }
 }
 
-export async function resolveTicketAction(formData: FormData) {
+export async function deleteTicketAction(formData: FormData) {
   await requireAdmin();
   const ticketId = String(formData.get("ticketId") ?? "");
   await connectDb();
-  await SupportTicketModel.findByIdAndUpdate(ticketId, {
-    status: SupportStatus.RESOLVED,
+  const evidence = await SupportEvidenceModel.find({ ticketId })
+    .select("blobPathname")
+    .lean();
+  for (const item of evidence) {
+    await deletePrivateMedia(item.blobPathname);
+    await SupportEvidenceModel.deleteOne({ _id: item._id });
+  }
+  await withTransaction(async (session) => {
+    await SupportMessageModel.deleteMany({ ticketId }).session(session);
+    await disputeRepository.deleteForTicket(ticketId, session);
+    await SupportTicketModel.deleteOne({ _id: ticketId }).session(session);
   });
   revalidatePath("/admin/support");
   revalidatePath(`/admin/support/${ticketId}`);
+  revalidatePath("/support");
   revalidatePath(`/support/${ticketId}`);
+  redirect("/admin/support");
 }

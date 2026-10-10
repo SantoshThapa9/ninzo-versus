@@ -10,7 +10,7 @@ import { resultRepository } from "@/repositories/ops.repository";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PendingSubmitButton } from "@/components/forms/pending-submit-button";
-import { resolveTicketAction } from "@/app/actions/support";
+import { deleteTicketAction } from "@/app/actions/support";
 import { SupportTicketChat } from "@/components/support/support-ticket-chat";
 import { SupportImageUploadToggle } from "@/components/support/support-image-upload-toggle";
 
@@ -109,14 +109,21 @@ export default async function AdminSupportTicketPage({ params }: PageProps<"/adm
       />
       <SupportTicketChat ticketId={id} isAdmin />
       <Card>
-        {ticket.status === "resolved" ? (
-          <p className="text-sm text-[var(--muted)]">This support request is closed.</p>
-        ) : (
-          <form action={resolveTicketAction}>
-              <input type="hidden" name="ticketId" value={id} />
-              <PendingSubmitButton type="submit" variant="secondary" size="full" pendingLabel="Closing chat...">Close chat and mark solved</PendingSubmitButton>
-          </form>
-        )}
+        <form action={deleteTicketAction}>
+          <input type="hidden" name="ticketId" value={id} />
+          <p className="mb-2 text-sm text-[var(--muted)]">
+            This permanently deletes the ticket, its messages, dispute record,
+            and uploaded evidence.
+          </p>
+          <PendingSubmitButton
+            type="submit"
+            variant="secondary"
+            size="full"
+            pendingLabel="Deleting request..."
+          >
+            Delete request and evidence
+          </PendingSubmitButton>
+        </form>
       </Card>
     </div>
   );

@@ -38,6 +38,7 @@ const HostedEventSchema = new Schema(
 );
 
 HostedEventSchema.index({ status: 1, eventDate: 1 });
+HostedEventSchema.index({ status: 1, createdAt: -1 });
 HostedEventSchema.index({ seasonId: 1, status: 1, eventDate: -1 });
 // Drives the expired-occurrence scan without inspecting future/live events.
 HostedEventSchema.index({ status: 1, registrationClosesAt: 1 });

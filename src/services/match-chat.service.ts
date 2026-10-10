@@ -1,19 +1,22 @@
 import { z } from "zod";
 import { connectDb } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
+import { CLASH_CHAT_EXPIRY_MS } from "@/config/defaults";
 import { MatchChatMessageModel } from "@/models/match-chat-message";
 import { UserModel } from "@/models/user";
 import { matchRepository } from "@/repositories/match.repository";
 import {
-  evidenceAttemptRepository,
   resultRepository,
 } from "@/repositories/ops.repository";
 import {
   expireMatchAfterChatTimeout,
+  expireMatchEvidenceDeadline,
   finalizeMatchEvidence,
 } from "@/services/match.service";
-import { resolveExtractedWinner } from "@/services/ai.service";
-import { getCurrentUserIdentity } from "@/services/player-profile.service";
+import {
+  getMatchEvidenceDeadline,
+  parseScreenshotResult,
+} from "@/services/match-evidence-rules";
 import { isSenderOnlyChatMessage, publicChatBody } from "@/lib/chat-moderation";
 
 const messageSchema = z
@@ -58,7 +61,7 @@ function getChatExpiry(match: { chatExpiresAt?: Date; updatedAt: Date }) {
   // Their updated time is the acceptance time unless an admin later changed the match.
   return (
     match.chatExpiresAt ??
-    new Date(new Date(match.updatedAt).getTime() + 24 * 60 * 60 * 1000)
+    new Date(new Date(match.updatedAt).getTime() + CLASH_CHAT_EXPIRY_MS)
   );
 }
 
@@ -71,6 +74,25 @@ async function assertChatOpen(userId: string, matchId: string) {
     getChatExpiry(match) <= new Date()
   ) {
     await expireMatchAfterChatTimeout(matchId);
+    match = await getParticipantMatch(userId, matchId);
+  }
+  const deadlineAwardPending =
+    match.status === "disputed" &&
+    match.aiWinnerRecommendation?.startsWith(
+      "Deadline expired: lone VICTORY",
+    );
+  if (
+    deadlineAwardPending ||
+    ((match.status === "awaiting_evidence" ||
+      match.status === "analyzing") &&
+      match.evidenceDeadlineAt &&
+      match.evidenceDeadlineAt <= new Date())
+  ) {
+    await expireMatchEvidenceDeadline(matchId);
+    match = await getParticipantMatch(userId, matchId);
+  }
+  if (match.status === "awaiting_evidence" || match.status === "analyzing") {
+    await finalizeMatchEvidence(matchId);
     match = await getParticipantMatch(userId, matchId);
   }
   if (match.status === "awaiting_evidence" || match.status === "analyzing") {
@@ -94,14 +116,18 @@ async function assertChatOpen(userId: string, matchId: string) {
   const expiresAt = getChatExpiry(match);
   if (expiresAt <= new Date())
     throw new AppError(
-      "This match chat expired after 24 hours.",
+      "This match chat expired after 12 hours.",
       "CHAT_EXPIRED",
       410,
     );
   return expiresAt;
 }
 
-export async function getMatchChat(userId: string, matchId: string) {
+export async function getMatchChat(
+  userId: string,
+  matchId: string,
+  after?: { createdAt: Date; id: string },
+) {
   await connectDb();
   let match = await getParticipantMatch(userId, matchId);
   // Normal chat polling stays read-only. Only the first request after expiry
@@ -113,6 +139,19 @@ export async function getMatchChat(userId: string, matchId: string) {
     await expireMatchAfterChatTimeout(matchId);
     match = await getParticipantMatch(userId, matchId);
   }
+  const deadlineAwardPending =
+    match.status === "disputed" &&
+    match.aiWinnerRecommendation?.startsWith("Deadline expired: lone VICTORY");
+  if (
+    deadlineAwardPending ||
+    ((match.status === "awaiting_evidence" ||
+      match.status === "analyzing") &&
+      match.evidenceDeadlineAt &&
+      match.evidenceDeadlineAt <= new Date())
+  ) {
+    await expireMatchEvidenceDeadline(matchId);
+    match = await getParticipantMatch(userId, matchId);
+  }
   const isEvidenceMode = [
     "awaiting_evidence",
     "analyzing",
@@ -121,8 +160,17 @@ export async function getMatchChat(userId: string, matchId: string) {
     "settled",
   ].includes(match.status);
   const expiresAt = getChatExpiry(match);
-  const messages = await MatchChatMessageModel.find({ matchId })
+  const messages = await MatchChatMessageModel.find({
+    matchId,
+    ...(after
+      ? {
+          createdAt: { $gte: after.createdAt },
+          _id: { $ne: after.id },
+        }
+      : {}),
+  })
     .sort({ createdAt: 1 })
+    .maxTimeMS(8_000)
     .lean();
   const participantIds = [
     String(match.creatorId),
@@ -137,43 +185,32 @@ export async function getMatchChat(userId: string, matchId: string) {
     users.map((user) => [String(user._id), user.ign || "Player"]),
   );
   const evidence = isEvidenceMode
-    ? await resultRepository.listForMatch(matchId)
+    ? (await resultRepository.listForMatch(matchId)).filter(
+        (item) => item.kind === "post_match_result",
+      )
     : [];
   const myEvidence = evidence.find((item) => String(item.userId) === userId);
   const myAnalysis = myEvidence?.aiAnalysis as
     | {
-        winnerIGN?: string;
-        roomId?: string;
+        result?: "VICTORY" | "DEFEAT" | "UNREADABLE";
       }
     | undefined;
-  const opponentId =
-    String(match.creatorId) === userId
-      ? String(match.opponentCaptainId)
-      : String(match.creatorId);
-  const identityById = new Map(
-    users.map((user) => [String(user._id), user.ign ?? ""]),
-  );
-  // Sender IDs can be absent for an empty chat, so retain the profile fallback
-  // only for the evidence-result calculation.
-  const currentPlayerIgn =
-    identityById.get(userId) ?? (await getCurrentUserIdentity(userId)).ign;
-  const opponentIgn =
-    identityById.get(opponentId) ??
-    (await getCurrentUserIdentity(opponentId)).ign;
-  const failedUploadAttempts = isEvidenceMode
-    ? await evidenceAttemptRepository.countFailures(matchId, userId)
-    : 0;
-  const extractedWinner = resolveExtractedWinner(myAnalysis?.winnerIGN, [
-    currentPlayerIgn,
-    opponentIgn,
-  ]);
-  const extractedResult =
-    extractedWinner === currentPlayerIgn
+  const myAnalysisResult = myAnalysis
+    ? parseScreenshotResult(myAnalysis.result)
+    : undefined;
+  const provisionalResult =
+    myAnalysisResult === "VICTORY"
       ? "win"
-      : extractedWinner === opponentIgn
+      : myAnalysisResult === "DEFEAT"
         ? "loss"
-        : undefined;
-  const provisionalResult = myAnalysis?.winnerIGN ? extractedResult : undefined;
+        : myAnalysisResult === "UNREADABLE"
+          ? "unreadable"
+          : undefined;
+  const deadlineOutcome = match.aiWinnerRecommendation?.startsWith(
+    "Deadline expired:",
+  )
+    ? match.aiWinnerRecommendation
+    : undefined;
   return {
     expiresAt,
     closed:
@@ -181,7 +218,13 @@ export async function getMatchChat(userId: string, matchId: string) {
       match.status === "cancelled" ||
       (match.completedBy?.length ?? 0) > 0,
     matchStatus: match.status,
-    failedUploadAttempts,
+    // The fallback keeps the countdown available for matches completed while
+    // the deadline field was not yet present on an older Mongo document.
+    evidenceDeadlineAt: (match.evidenceDeadlineAt ??
+      (match.completedAt
+        ? getMatchEvidenceDeadline(new Date(match.completedAt))
+        : undefined))?.toISOString(),
+    deadlineOutcome,
     chatNotificationsMuted: (match.chatNotificationMutedBy ?? []).some(
       (mutedUserId: unknown) => String(mutedUserId) === userId,
     ),
@@ -193,6 +236,13 @@ export async function getMatchChat(userId: string, matchId: string) {
         : match.status === "disputed"
           ? "hold"
           : provisionalResult,
+    bothScreenshotsUploaded:
+      evidence.some(
+        (item) => String(item.userId) === String(match.creatorId),
+      ) &&
+      evidence.some(
+        (item) => String(item.userId) === String(match.opponentCaptainId),
+      ),
     evidence: isEvidenceMode
       ? evidence
           .filter((item) => String(item.userId) === userId)
