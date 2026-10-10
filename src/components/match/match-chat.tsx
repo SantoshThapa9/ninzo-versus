@@ -13,7 +13,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { ActionForm } from "@/components/forms/action-form";
 import { confirmMatchCompletedAction } from "@/app/actions/match";
-import { MATCH_EVIDENCE_DEADLINE_MS } from "@/config/defaults";
+import {
+  MATCH_EVIDENCE_DEADLINE_MS,
+  MEDIA_DEFAULTS,
+} from "@/config/defaults";
 import {
   isAbusiveChatMessage,
   isMutedChatMessage,
@@ -516,22 +519,29 @@ export function MatchChat({
               </>
             )}
             {evidence.length ? (
-              <div className="grid grid-cols-2 gap-2">
-                {evidence.map((item) => (
-                  <a
-                    key={item._id}
-                    href={item.imageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="overflow-hidden rounded-xl border border-white/10"
-                  >
-                    <img
-                      src={item.imageUrl}
-                      alt="Match screenshot"
-                      className="aspect-video w-full object-cover"
-                    />
-                  </a>
-                ))}
+              <div className="grid gap-2">
+                <p className="text-xs text-[var(--muted)]">
+                  Screenshots are removed {MEDIA_DEFAULTS.tempRetentionDays}{" "}
+                  days after match completion. Evidence held for admin review
+                  is kept until the review is resolved.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {evidence.map((item) => (
+                    <a
+                      key={item._id}
+                      href={item.imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="overflow-hidden rounded-xl border border-white/10"
+                    >
+                      <img
+                        src={item.imageUrl}
+                        alt="Match screenshot"
+                        className="aspect-video w-full object-cover"
+                      />
+                    </a>
+                  ))}
+                </div>
               </div>
             ) : null}
           </div>

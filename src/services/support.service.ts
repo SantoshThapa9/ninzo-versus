@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { connectDb } from "@/lib/db/mongoose";
 import { AppError } from "@/lib/errors";
-import { supportRepository, disputeRepository } from "@/repositories/ops.repository";
+import {
+  supportRepository,
+  disputeRepository,
+} from "@/repositories/ops.repository";
 import { playerProfileRepository } from "@/repositories/player-profile.repository";
 import { ReportType, SupportStatus, TicketSender } from "@/types/enums";
 import { notifySupportAdminReply } from "@/services/push-notification.service";
@@ -48,12 +51,21 @@ export async function openTicket(userId: string, raw: unknown) {
   return ticket;
 }
 
-export async function sendTicketMessage(userId: string, ticketId: string, body: string, asAdmin = false) {
+export async function sendTicketMessage(
+  userId: string,
+  ticketId: string,
+  body: string,
+  asAdmin = false,
+) {
   await connectDb();
   const ticket = await supportRepository.findTicket(ticketId);
   if (!ticket) throw new AppError("Ticket not found.", "NOT_FOUND", 404);
   if (ticket.status === SupportStatus.RESOLVED) {
-    throw new AppError("This support request has been closed.", "TICKET_CLOSED", 409);
+    throw new AppError(
+      "This support request has been closed.",
+      "TICKET_CLOSED",
+      409,
+    );
   }
   if (!asAdmin && String(ticket.userId) !== userId) {
     throw new AppError("Forbidden.", "FORBIDDEN", 403);
@@ -81,7 +93,11 @@ export async function sendTicketMessage(userId: string, ticketId: string, body: 
   return message;
 }
 
-export async function getTicket(userId: string, ticketId: string, isAdmin: boolean) {
+export async function getTicket(
+  userId: string,
+  ticketId: string,
+  isAdmin: boolean,
+) {
   await connectDb();
   const ticket = await supportRepository.findTicket(ticketId);
   if (!ticket) throw new AppError("Ticket not found.", "NOT_FOUND", 404);
@@ -95,8 +111,16 @@ export async function getTicket(userId: string, ticketId: string, isAdmin: boole
   return { ticket: JSON.parse(JSON.stringify(ticket)), messages, evidence };
 }
 
-export async function getSupportChat(userId: string, ticketId: string, isAdmin: boolean) {
-  const { ticket, messages, evidence } = await getTicket(userId, ticketId, isAdmin);
+export async function getSupportChat(
+  userId: string,
+  ticketId: string,
+  isAdmin: boolean,
+) {
+  const { ticket, messages, evidence } = await getTicket(
+    userId,
+    ticketId,
+    isAdmin,
+  );
   return {
     status: ticket.status,
     messages: JSON.parse(JSON.stringify(messages)),

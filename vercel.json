@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/expire-match-evidence",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/cron/purge-media",
