@@ -1012,6 +1012,13 @@ export async function adminSettleMatch(
         referenceType: "Match",
         referenceId: matchId,
         idempotencyKey: `stake-unlock:${matchId}:${participantId}`,
+        metadata: {
+          outcome: winnerId
+            ? participantId === winnerId
+              ? "win"
+              : "loss"
+            : "draw",
+        },
         session,
       });
     }

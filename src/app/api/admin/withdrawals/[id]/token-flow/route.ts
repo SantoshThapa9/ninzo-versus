@@ -10,7 +10,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (session?.user?.role !== UserRole.ADMIN) return NextResponse.json({ error: "Admin access required." }, { status: 403 });
     const { id } = await params;
     const cursor = new URL(request.url).searchParams.get("cursor") ?? undefined;
-    return NextResponse.json(await getWithdrawalTokenFlow(id, cursor));
+    return NextResponse.json(await getWithdrawalTokenFlow(id, cursor), {
+      headers: { "Cache-Control": "private, no-store" },
+    });
   } catch (error) {
     return NextResponse.json({ error: toErrorMessage(error) }, { status: error instanceof AppError ? error.status : 500 });
   }

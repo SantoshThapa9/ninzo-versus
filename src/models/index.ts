@@ -7,6 +7,8 @@ export { HostedEventModel } from "@/models/hosted-event";
 export { HostedTeamModel } from "@/models/hosted-team";
 export { PaymentModel } from "@/models/payment";
 export { CoinTransactionModel } from "@/models/coin-transaction";
+export { CoinTransactionIdempotencyKeyModel } from "@/models/coin-transaction";
+export { TokenActivityAuditModel } from "@/models/token-activity-audit";
 export { WithdrawalModel } from "@/models/withdrawal";
 export { ResultSubmissionModel } from "@/models/result-submission";
 export { DisputeModel } from "@/models/dispute";

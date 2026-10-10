@@ -16,7 +16,7 @@ export default async function AdminWithdrawalsPage() {
         Post-match result verification and reward redemption are fulfilled by
         the organizer.
       </p>
-      {withdrawals.map(({ withdrawal, user, flow, nextCursor }) => (
+      {withdrawals.map(({ withdrawal, user, history }) => (
         <WithdrawalReviewCard
           key={String(withdrawal._id)}
           withdrawal={{
@@ -24,10 +24,10 @@ export default async function AdminWithdrawalsPage() {
             coins: withdrawal.coins,
             status: withdrawal.status,
             upiId: withdrawal.upiId,
+            createdAt: withdrawal.createdAt.toISOString(),
           }}
           user={user}
-          initialTransactions={flow}
-          initialCursor={nextCursor}
+          initialHistory={history}
         />
       ))}
     </div>

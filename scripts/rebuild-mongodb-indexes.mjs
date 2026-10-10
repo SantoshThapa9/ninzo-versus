@@ -46,7 +46,37 @@ const indexes = {
   ],
   matchparticipants: [[{ matchId: 1, userId: 1 }, { unique: true }], [{ userId: 1, matchId: 1 }, {}]],
   matchchatmessages: [[{ matchId: 1, createdAt: 1 }, {}], [{ expiresAt: 1 }, { expireAfterSeconds: 0 }]],
-  cointransactions: [[{ idempotencyKey: 1 }, { unique: true }], [{ userId: 1, createdAt: -1 }, {}]],
+  cointransactions: [
+    [{ idempotencyKey: 1 }, { unique: true }],
+    [{ userId: 1, createdAt: -1 }, {}],
+    [
+      { userId: 1, referenceType: 1, referenceId: 1 },
+      { unique: true, partialFilterExpression: { referenceType: "daily_free_reward" } },
+    ],
+    [
+      { accountEmail: 1, referenceType: 1, referenceId: 1 },
+      {
+        unique: true,
+        partialFilterExpression: {
+          referenceType: "daily_free_reward",
+          accountEmail: { $type: "string" },
+        },
+      },
+    ],
+  ],
+  cointransactionidempotencykeys: [
+    [{ idempotencyKey: 1 }, { unique: true }],
+    [
+      { userId: 1, referenceType: 1, referenceId: 1 },
+      { unique: true, partialFilterExpression: { referenceType: "daily_free_reward" } },
+    ],
+  ],
+  tokenactivityaudits: [
+    [{ userId: 1, transactionId: 1 }, { unique: true }],
+    [{ userId: 1, createdAt: -1, _id: -1 }, {}],
+    [{ userId: 1, referenceType: 1, referenceId: 1 }, {}],
+    [{ userId: 1, availableAfter: 1, lockedAfter: 1, createdAt: -1, _id: -1 }, {}],
+  ],
   withdrawals: [[{ userId: 1, createdAt: -1 }, {}], [{ status: 1, createdAt: -1 }, {}]],
   payments: [[{ razorpayOrderId: 1 }, { unique: true }], [{ razorpayPaymentId: 1 }, { unique: true, sparse: true }], [{ idempotencyKey: 1 }, { unique: true }]],
   supporttickets: [[{ userId: 1, updatedAt: -1 }, {}], [{ source: 1, status: 1, updatedAt: -1 }, {}]],

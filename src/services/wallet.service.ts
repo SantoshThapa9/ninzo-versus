@@ -5,6 +5,7 @@ import { roundTokens } from "@/lib/utils";
 import { DAILY_FREE_REWARD_SCHEDULE } from "@/config/defaults";
 import { userRepository } from "@/repositories/user.repository";
 import { ledgerRepository } from "@/repositories/finance.repository";
+import { tokenActivityAuditRepository } from "@/repositories/token-activity-audit.repository";
 import { CoinTxnType, UserRole } from "@/types/enums";
 import bcrypt from "bcryptjs";
 
@@ -87,6 +88,8 @@ export async function applyLedger(input: LedgerInput) {
   // accumulate JavaScript floating-point artifacts (for example 0.1 + 0.2).
   const available = roundTokens(user.availableCoins + input.availableDelta);
   const locked = roundTokens(user.lockedCoins + input.lockedDelta);
+  const availableBefore = user.availableCoins;
+  const lockedBefore = user.lockedCoins;
   if (available < 0 || locked < 0) {
     throw new AppError("Insufficient NV Tokens for match registration.", "INSUFFICIENT_FUNDS");
   }
@@ -95,7 +98,7 @@ export async function applyLedger(input: LedgerInput) {
   user.lockedCoins = locked;
   await user.save({ session: input.session });
 
-  return ledgerRepository.create(
+  const transaction = await ledgerRepository.create(
     {
       userId: input.userId,
       type: input.type,
@@ -110,6 +113,59 @@ export async function applyLedger(input: LedgerInput) {
     },
     input.session,
   );
+  await ledgerRepository.recordIdempotency(transaction, input.session);
+
+  if (user.role !== UserRole.PLATFORM) {
+    const outcome =
+      input.metadata !== null &&
+      typeof input.metadata === "object" &&
+      "outcome" in input.metadata
+        ? input.metadata.outcome
+        : undefined;
+    const matchOutcome =
+      outcome === "win" || outcome === "loss" || outcome === "draw"
+        ? outcome
+        : undefined;
+    await tokenActivityAuditRepository.create(
+      {
+        transactionId: transaction._id,
+        userId: input.userId,
+        type: input.type,
+        amount: input.amount,
+        availableDelta: roundTokens(available - availableBefore),
+        lockedDelta: roundTokens(locked - lockedBefore),
+        availableBefore,
+        lockedBefore,
+        availableAfter: available,
+        lockedAfter: locked,
+        referenceType: input.referenceType,
+        referenceId: input.referenceId,
+        ...(matchOutcome ? { matchOutcome } : {}),
+        createdAt: transaction.createdAt,
+        ...(input.type === CoinTxnType.WITHDRAWAL &&
+        input.referenceType === "Withdrawal"
+          ? {
+              withdrawalSnapshot: {
+                requestedAmount: Math.abs(input.amount),
+                availableBeforeReservation: availableBefore,
+                lockedBeforeReservation: lockedBefore,
+                totalBeforeReservation: roundTokens(availableBefore + lockedBefore),
+                availableAfterReservation: available,
+                lockedAfterReservation: locked,
+                totalAfterReservation: roundTokens(available + locked),
+              },
+            }
+          : {}),
+      },
+      input.session,
+    );
+  }
+
+  if (user.role !== UserRole.PLATFORM && available === 0 && locked === 0) {
+    await ledgerRepository.deleteActivityForUser(input.userId, input.session);
+  }
+
+  return transaction;
 }
 
 export async function getDailyFreeRewardStatus(userId: string, date = new Date()) {

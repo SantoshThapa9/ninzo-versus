@@ -59,16 +59,16 @@ export default async function InventoryPage() {
 
         {userId ? (
           !user?.age || user.age < 18 ? (
-            <p className="text-sm text-[var(--muted)]">
-              Token deposits are available to players aged 18 or older.
+            <p className="text-sm text-[var(--muted)]" role="alert">
+              You must be 18 or older to deposit tokens.
             </p>
           ) : !user.phoneNumber ? (
             <p className="text-sm text-[var(--muted)]">
-              Add your phone number in your{" "}
+              Please complete your{" "}
               <Link className="underline" href="/profile">
                 profile
               </Link>{" "}
-              to continue.
+              to continue with your deposit.
             </p>
           ) : (
             <DepositForm

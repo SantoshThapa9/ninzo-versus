@@ -97,7 +97,7 @@ export function DepositForm({
   return (
     <div className="grid gap-3">
       <div>
-        <Label htmlFor="coins">NV Tokens</Label>
+        <Label htmlFor="coins">Minimum {minCoins} NV Tokens</Label>
         <Input
           id="coins"
           type="number"

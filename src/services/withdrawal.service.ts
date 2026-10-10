@@ -4,7 +4,6 @@ import { AppError } from "@/lib/errors";
 import { todayUtcStart } from "@/lib/utils";
 import { isValidTokenAmount } from "@/lib/utils";
 import {
-  ledgerRepository,
   withdrawalRepository,
 } from "@/repositories/finance.repository";
 import { userRepository } from "@/repositories/user.repository";
@@ -16,6 +15,7 @@ import { formatTokenActivity } from "@/lib/token-activity";
 import mongoose from "mongoose";
 import { upiIdSchema } from "@/services/upi.service";
 import { ECONOMY_DEFAULTS } from "@/config/defaults";
+import { tokenActivityAuditRepository } from "@/repositories/token-activity-audit.repository";
 
 const requestSchema = z.object({
   coins: z.number().positive().refine(isValidTokenAmount, {
@@ -158,6 +158,7 @@ export async function listWithdrawals(userId?: string) {
 }
 
 type TokenFlowCursor = { createdAt: string; id: string };
+const TOKEN_AUDIT_PAGE_SIZE = 20;
 
 function parseTokenFlowCursor(cursor?: string): TokenFlowCursor | undefined {
   if (!cursor) return undefined;
@@ -179,13 +180,21 @@ function parseTokenFlowCursor(cursor?: string): TokenFlowCursor | undefined {
 }
 
 function serializeTokenFlow(
-  transactions: Awaited<ReturnType<typeof ledgerRepository.listForUserPage>>,
+  transactions: Awaited<ReturnType<typeof tokenActivityAuditRepository.listThroughWithdrawal>>,
 ) {
   return transactions.map((transaction) => ({
     id: String(transaction._id),
-    label: formatTokenActivity(transaction.type),
+    label: formatTokenActivity(transaction.type, transaction.matchOutcome),
     amount: transaction.amount,
+    availableDelta: transaction.availableDelta,
+    lockedDelta: transaction.lockedDelta,
+    availableBefore: transaction.availableBefore,
+    lockedBefore: transaction.lockedBefore,
     availableAfter: transaction.availableAfter,
+    lockedAfter: transaction.lockedAfter,
+    referenceType: transaction.referenceType,
+    referenceId: transaction.referenceId,
+    matchOutcome: transaction.matchOutcome ?? null,
     createdAt: transaction.createdAt.toISOString(),
   }));
 }
@@ -212,25 +221,54 @@ export async function getWithdrawalTokenFlow(
       404,
     );
   const parsedCursor = parseTokenFlowCursor(cursor);
-  const transactions = await ledgerRepository.listForUserPage(
-    String(withdrawal.userId),
+  const userId = String(withdrawal.userId);
+  const requestAudit = await tokenActivityAuditRepository.findWithdrawalRequest(
+    userId,
+    withdrawalId,
+  );
+  const target = requestAudit
+    ? { id: String(requestAudit._id), createdAt: requestAudit.createdAt }
+    : {
+        id: "ffffffffffffffffffffffff",
+        createdAt: withdrawal.createdAt,
+      };
+  const [zeroBalanceReset, previousWithdrawals] = await Promise.all([
+    tokenActivityAuditRepository.findLatestZeroBalanceBefore(userId, target),
+    tokenActivityAuditRepository.listWithdrawalsThrough(userId, withdrawal.createdAt),
+  ]);
+  const historyBoundary = zeroBalanceReset
+    ? { id: String(zeroBalanceReset._id), createdAt: zeroBalanceReset.createdAt }
+    : null;
+  const pageTransactions = await tokenActivityAuditRepository.listThroughWithdrawal(
+    userId,
+    target,
+    historyBoundary,
     parsedCursor
       ? { id: parsedCursor.id, createdAt: new Date(parsedCursor.createdAt) }
       : undefined,
-    10,
+    TOKEN_AUDIT_PAGE_SIZE + 1,
   );
+  const hasMore = pageTransactions.length > TOKEN_AUDIT_PAGE_SIZE;
+  const visibleTransactions = pageTransactions.slice(0, TOKEN_AUDIT_PAGE_SIZE);
   return {
-    transactions: serializeTokenFlow(transactions),
-    // The next request confirms whether another page exists without loading
-    // an extra transaction ahead of the admin's explicit request.
-    nextCursor:
-      transactions.length === 10
-        ? nextTokenFlowCursor(transactions[transactions.length - 1])
-        : null,
+    transactions: serializeTokenFlow(visibleTransactions),
+    nextCursor: hasMore
+      ? nextTokenFlowCursor(visibleTransactions[visibleTransactions.length - 1])
+      : null,
+    withdrawalSnapshot: requestAudit?.withdrawalSnapshot ?? null,
+    previousWithdrawals: previousWithdrawals.map((item) => ({
+      id: String(item._id),
+      amount: item.coins,
+      status: item.status,
+      createdAt: item.createdAt.toISOString(),
+      processedAt: item.processedAt?.toISOString() ?? null,
+      current: String(item._id) === withdrawalId,
+    })),
+    resetAt: historyBoundary?.createdAt.toISOString() ?? null,
   };
 }
 
-/** Minimal admin review data derived from the immutable wallet ledger. */
+/** Admin review data is derived from the permanent wallet audit collection. */
 export async function listWithdrawalReviews() {
   await connectDb();
   const withdrawals = await WithdrawalModel.find()
@@ -240,24 +278,20 @@ export async function listWithdrawalReviews() {
   const userIds = [
     ...new Set(withdrawals.map((withdrawal) => String(withdrawal.userId))),
   ];
-  const [users, flows] = await Promise.all([
+  const [users, histories] = await Promise.all([
     userRepository.findByIds(userIds),
     Promise.all(
-      userIds.map(
-        async (userId) =>
-          [
-            userId,
-            await ledgerRepository.listForUserPage(userId, undefined, 10),
-          ] as const,
-      ),
+      withdrawals.map(async (withdrawal) => [
+        String(withdrawal._id),
+        await getWithdrawalTokenFlow(String(withdrawal._id)),
+      ] as const),
     ),
   ]);
   const usersById = new Map(users.map((user) => [String(user._id), user]));
-  const flowsByUserId = new Map(flows);
+  const historiesByWithdrawalId = new Map(histories);
 
   return withdrawals.map((withdrawal) => {
-    const transactions = flowsByUserId.get(String(withdrawal.userId)) ?? [];
-    const flow = transactions;
+    const history = historiesByWithdrawalId.get(String(withdrawal._id));
     const user = usersById.get(String(withdrawal.userId));
     return {
       withdrawal,
@@ -266,13 +300,10 @@ export async function listWithdrawalReviews() {
             displayName: user.displayName,
             email: user.email,
             availableCoins: user.availableCoins,
+            lockedCoins: user.lockedCoins,
           }
         : null,
-      flow: serializeTokenFlow(flow),
-      nextCursor:
-        transactions.length === 10
-          ? nextTokenFlowCursor(flow[flow.length - 1])
-          : null,
+      history,
     };
   });
 }

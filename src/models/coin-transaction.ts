@@ -65,3 +65,32 @@ if (cachedCoinTransactionModel) {
 
 export const CoinTransactionModel =
   cachedCoinTransactionModel || model("CoinTransaction", CoinTransactionSchema);
+
+const CoinTransactionIdempotencyKeySchema = new Schema(
+  {
+    idempotencyKey: { type: String, required: true, unique: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User" },
+    type: { type: String, enum: Object.values(CoinTxnType) },
+    amount: { type: Number },
+    referenceType: { type: String },
+    referenceId: { type: String },
+    metadata: { type: Schema.Types.Mixed },
+  },
+  { timestamps: false },
+);
+
+CoinTransactionIdempotencyKeySchema.index(
+  { userId: 1, referenceType: 1, referenceId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { referenceType: "daily_free_reward" },
+  },
+);
+
+export const CoinTransactionIdempotencyKeyModel =
+  models.CoinTransactionIdempotencyKey ||
+  model(
+    "CoinTransactionIdempotencyKey",
+    CoinTransactionIdempotencyKeySchema,
+    "cointransactionidempotencykeys",
+  );
