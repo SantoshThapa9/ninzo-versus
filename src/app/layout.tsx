@@ -4,11 +4,14 @@ import { AppShell } from "@/components/shell/app-shell";
 import { ChatNotificationListener } from "@/components/match/chat-notification-listener";
 import "./globals.css";
 
+const pageTitle =
+  "Ninzo Versus | Competitive Tournaments & Global Player Rankings";
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://ninzo-versus.vercel.app"),
 
   title: {
-    default: "Ninzo Versus | Competitive Tournaments & Global Player Rankings",
+    default: pageTitle,
     template: "%s | Ninzo Versus",
   },
 
@@ -63,7 +66,7 @@ export const metadata: Metadata = {
     locale: "en_IN",
     url: "/",
     siteName: "Ninzo Versus",
-    title: "Ninzo Versus | Competitive Tournaments & Global Player Rankings",
+    title: pageTitle,
     description:
       "Compete in tournaments and challenges, follow seasonal global rankings, earn achievements, and showcase your competitive profile on Ninzo Versus.",
     images: [
@@ -78,7 +81,7 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "Ninzo Versus | Competitive Tournaments & Global Player Rankings",
+    title: pageTitle,
     description:
       "Compete, climb seasonal global rankings, earn achievements, and showcase your competitive profile on Ninzo Versus.",
     images: ["/og-image.jpg"],
@@ -96,6 +99,7 @@ export const metadata: Metadata = {
     },
   },
 };
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">

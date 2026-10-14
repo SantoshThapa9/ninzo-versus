@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ninzo Versus</string>
+    <string name="title_activity_main">Ninzo Versus</string>
+    <string name="package_name">com.ninzoversus.app</string>
+    <string name="custom_url_scheme">com.ninzoversus.app</string>
+</resources>

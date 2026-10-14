@@ -4,10 +4,9 @@ import { BottomNav } from "@/components/shell/bottom-nav";
 import { AppTour } from "@/components/onboarding/app-tour";
 import { RankRouteRefresh } from "@/components/shell/rank-route-refresh";
 import styles from "./app-shell.module.scss";
-import Image from "next/image";
 import { ScrollText } from "lucide-react";
 
-export async function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className={styles.shell}>
       <AppTour />

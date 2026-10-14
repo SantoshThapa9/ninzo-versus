@@ -27,7 +27,15 @@ export default async function AdminWithdrawalsPage() {
             createdAt: withdrawal.createdAt.toISOString(),
           }}
           user={user}
-          initialHistory={history}
+          initialHistory={
+            history ?? {
+              transactions: [],
+              nextCursor: null,
+              withdrawalSnapshot: null,
+              previousWithdrawals: [],
+              resetAt: null,
+            }
+          }
         />
       ))}
     </div>
