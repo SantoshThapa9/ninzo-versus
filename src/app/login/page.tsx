@@ -6,7 +6,14 @@ import { Card } from "@/components/ui/card";
 import GoogleSignInButton from "../../components/auth/google-signin-button";
 import Link from "next/link";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const googleSignInFailed = params.error === "GoogleSignInFailed";
+
   return (
     <Card className="mt-8">
       <h1 className="mb-4 text-2xl font-bold">Sign in</h1>
@@ -27,7 +34,10 @@ export default function LoginPage() {
         <div className="h-px flex-1 bg-white/10" />
       </div>
 
-      <GoogleSignInButton label="Continue with Google" />
+      <GoogleSignInButton
+        label="Continue with Google"
+        initialError={googleSignInFailed}
+      />
 
       <p className="mt-4 text-sm text-[var(--muted)]">
         New here? <Link href="/register">Create an account</Link>

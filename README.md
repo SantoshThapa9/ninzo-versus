@@ -112,6 +112,16 @@ The APK is written to
 `CAPACITOR_SERVER_URL` for this build; that variable remains available for the
 development live-reload workflow above. The two URL variables cannot be set at
 the same time. Install the APK on a phone with internet access, open it, and
+
+On Android, Google sign-in opens a Chrome Custom Tab instead of embedding
+Google's OAuth page in the app WebView. After Google's existing web OAuth
+callback completes, a short-lived, single-use, PKCE-bound handoff returns to
+the app and creates the normal Auth.js session in its WebView. Keep the Google
+OAuth client configured as a **Web application** with the deployed website's
+existing authorized origin and `/api/auth/callback/google` redirect URI; this
+flow does not require a separate Android OAuth client. Do not place OAuth
+secrets in Capacitor configuration or the APK. Website Google sign-in continues
+to use the existing Auth.js redirect flow. Install the APK on a phone with internet access, open it, and
 test sign-in, navigation, and server-backed features such as deposits against
 the deployed site. This debug-signed APK is for direct testing, not Play Store
 distribution; Play Store release signing requires your release keystore.

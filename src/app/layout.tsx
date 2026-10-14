@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Toaster } from "sonner";
 import { AppShell } from "@/components/shell/app-shell";
 import { ChatNotificationListener } from "@/components/match/chat-notification-listener";
+import AndroidAuthCallbackHandler from "@/components/auth/android-auth-callback-handler";
 import "./globals.css";
 
 const pageTitle =
@@ -106,6 +107,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body>
         <AppShell>{children}</AppShell>
         <ChatNotificationListener />
+        <AndroidAuthCallbackHandler />
         <Toaster theme="dark" />
       </body>
     </html>
