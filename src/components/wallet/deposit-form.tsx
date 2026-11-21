@@ -31,20 +31,12 @@ function loadScript() {
 
 export function DepositForm({
   minCoins,
-  coinsPerRupee,
-  feePercent,
 }: {
   minCoins: number;
-  coinsPerRupee: number;
-  feePercent: number;
 }) {
   const [coins, setCoins] = useState(minCoins);
   const [error, setError] = useState("");
   const [isPaying, setIsPaying] = useState(false);
-  const rupees = coins / coinsPerRupee;
-  const fee = (rupees * feePercent) / 100;
-  const total = rupees + fee;
-
   async function pay() {
     try {
       setError("");

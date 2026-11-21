@@ -10,6 +10,8 @@ import { PlayerRankCard } from "@/components/rank/playerRankCard";
 
 type RankTab = "rankings" | "event-results";
 
+export const dynamic = "force-dynamic";
+
 export default async function RankPage({ searchParams }: PageProps<"/rank">) {
   const params = await searchParams;
   const tab =

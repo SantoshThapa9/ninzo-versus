@@ -10,7 +10,7 @@ import { acceptMatchAction, deleteMatchAction } from "@/app/actions/match";
 import { MatchChat } from "@/components/match/match-chat";
 import { ClashStatusSync } from "@/components/match/clash-status-sync";
 import { UserRole } from "@/types/enums";
-import { ShieldCheck, Swords, Trash2 } from "lucide-react";
+import { Swords, Trash2 } from "lucide-react";
 
 export default async function ClashDetailPage({
   params,

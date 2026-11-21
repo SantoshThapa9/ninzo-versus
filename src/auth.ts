@@ -7,7 +7,6 @@ import { userRepository } from "@/repositories/user.repository";
 import { isBootstrapAdminEmail } from "@/services/auth.service";
 import { UserRole, UserStatus } from "@/types/enums";
 import type { UserRole as UserRoleType } from "@/types/enums";
-import { redeemAndroidGoogleHandoff } from "@/lib/auth/android-google-handoff";
 
 declare module "next-auth" {
   interface User {
@@ -71,15 +70,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           role: user.role,
         };
       },
-    }),
-    Credentials({
-      id: "android-google-handoff",
-      name: "Android Google handoff",
-      credentials: {
-        code: { type: "text" },
-        verifier: { type: "text" },
-      },
-      authorize: redeemAndroidGoogleHandoff,
     }),
   ],
   callbacks: {

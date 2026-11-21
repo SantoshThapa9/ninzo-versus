@@ -73,8 +73,6 @@ export default async function InventoryPage() {
           ) : (
             <DepositForm
               minCoins={ECONOMY_DEFAULTS.minDepositCoins}
-              coinsPerRupee={ECONOMY_DEFAULTS.nvCoinsPerRupee}
-              feePercent={ECONOMY_DEFAULTS.depositFeePercent}
             />
           )
         ) : (

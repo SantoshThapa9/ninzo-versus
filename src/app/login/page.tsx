@@ -30,7 +30,9 @@ export default async function LoginPage({
 
       <div className="my-4 flex items-center gap-3">
         <div className="h-px flex-1 bg-white/10" />
-        <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">or</span>
+        <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+          or
+        </span>
         <div className="h-px flex-1 bg-white/10" />
       </div>
 

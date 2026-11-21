@@ -52,7 +52,7 @@ export const DEFAULT_PRIZE_SPLIT = {
 export const MONTHLY_RANK_PRIZE = 10; //in NV Token
 
 export const DAILY_FREE_REWARD_SCHEDULE = [
-  0.05, 0.15, 0.3, 0.55, 0.85, 1.2, 1.9,
+  0.1, 0.2, 0.35, 0.6, 0.85, 1.2, 1.7,
 ] as const; //for a week
 
 export const TOTAL_WEEKLY_FREE_REWARD = DAILY_FREE_REWARD_SCHEDULE.reduce(

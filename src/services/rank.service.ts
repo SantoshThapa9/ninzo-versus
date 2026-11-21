@@ -9,7 +9,7 @@ import {
 import { SeasonModel, type SeasonDoc } from "@/models/season";
 import { SeasonPlayerStatModel } from "@/models/season-player-stat";
 import { MatchModel } from "@/models/match";
-import { UserModel } from "@/models/user";
+import { ensureMonthlyRankStatFields, UserModel } from "@/models/user";
 import { CoinTxnType, MatchStatus, UserRole } from "@/types/enums";
 import { getOrCreateSeasonForDate } from "@/services/season.service";
 import { applyLedger } from "@/services/wallet.service";
@@ -39,10 +39,7 @@ function aggregateSeasonMatchStats(
     {
       $project: {
         participants: [
-          {
-            userId: "$creatorId",
-            won: { $eq: ["$winnerTeam", "A"] },
-          },
+          { userId: "$creatorId", won: { $eq: ["$winnerTeam", "A"] } },
           {
             userId: "$opponentCaptainId",
             won: { $eq: ["$winnerTeam", "B"] },
@@ -55,9 +52,7 @@ function aggregateSeasonMatchStats(
       $group: {
         _id: "$participants.userId",
         matchesPlayed: { $sum: 1 },
-        wins: {
-          $sum: { $cond: ["$participants.won", 1, 0] },
-        },
+        wins: { $sum: { $cond: ["$participants.won", 1, 0] } },
       },
     },
   ])
@@ -71,13 +66,14 @@ export { RANK_PAGE_SIZE };
 
 export async function getPlayerRank(userId: string) {
   await connectDb();
+  const fields = ensureMonthlyRankStatFields(new Date());
   const user = await UserModel.findById(userId)
-    .select("displayName ign wins matchesPlayed")
+    .select(`displayName ign ${fields.wins} ${fields.matchesPlayed}`)
     .lean();
   if (!user) return null;
 
-  const wins = Number(user.wins) || 0;
-  const matches = Number(user.matchesPlayed) || 0;
+  const wins = Number(user[fields.wins]) || 0;
+  const matches = Number(user[fields.matchesPlayed]) || 0;
   const rankScore = getRankScore(wins, matches);
   return {
     userId,
@@ -148,18 +144,28 @@ const rankedPlayerStages = [
   },
 ] as const;
 
-async function aggregateCurrentRankedPlayers(skip: number, limit: number) {
+async function aggregateMonthlyRankedPlayers(
+  date: Date,
+  skip: number,
+  limit: number,
+) {
+  const fields = ensureMonthlyRankStatFields(date);
   return UserModel.aggregate<AggregatedPlayer>([
     { $match: { role: { $ne: UserRole.PLATFORM } } },
     {
       $project: {
         _id: 1,
         wins: {
-          $convert: { input: "$wins", to: "long", onError: 0, onNull: 0 },
+          $convert: {
+            input: `$${fields.wins}`,
+            to: "long",
+            onError: 0,
+            onNull: 0,
+          },
         },
         matches: {
           $convert: {
-            input: "$matchesPlayed",
+            input: `$${fields.matchesPlayed}`,
             to: "long",
             onError: 0,
             onNull: 0,
@@ -273,22 +279,18 @@ async function aggregateSeasonRankedPlayers(
 }
 
 export async function listSeasonRanks(
-  season: Pick<SeasonDoc, "_id" | "status" | "rankingsSnapshottedAt">,
+  season: Pick<SeasonDoc, "_id" | "startDate">,
   limit = RANK_PAGE_SIZE,
   offset = 0,
 ): Promise<{ players: PlayerRank[]; hasMore: boolean }> {
   const safeLimit = Math.min(Math.max(1, limit), 50);
   const safeOffset = Math.max(0, offset);
   await connectDb();
-  const isCurrentSeason =
-    season.status === "active" && !season.rankingsSnapshottedAt;
-  const rows = isCurrentSeason
-    ? await aggregateCurrentRankedPlayers(safeOffset, safeLimit + 1)
-    : await aggregateSeasonRankedPlayers(
-        String(season._id),
-        safeOffset,
-        safeLimit + 1,
-      );
+  const rows = await aggregateMonthlyRankedPlayers(
+    season.startDate,
+    safeOffset,
+    safeLimit + 1,
+  );
   const hasMore = rows.length > safeLimit;
   const players = (hasMore ? rows.slice(0, safeLimit) : rows).map(toPlayerRank);
   return { players, hasMore };
@@ -308,6 +310,7 @@ export async function snapshotPreviousSeasonAtMonthStart(date = new Date()) {
   );
   const season = await getOrCreateSeasonForDate(snapshotDate);
   const activeSeason = await getOrCreateSeasonForDate(date);
+  const activeFields = ensureMonthlyRankStatFields(date);
   if (season.rankingsSnapshottedAt) {
     return { executed: false, reason: "already-snapshotted" } as const;
   }
@@ -330,28 +333,29 @@ export async function snapshotPreviousSeasonAtMonthStart(date = new Date()) {
   }
 
   const seasonId = season._id;
-  const seasonStats = await aggregateSeasonMatchStats(seasonId);
+  const fields = ensureMonthlyRankStatFields(season.startDate);
   const users = await UserModel.find({
-    _id: { $in: seasonStats.map((stat) => stat._id) },
+    [fields.matchesPlayed]: { $exists: true },
   })
-    .select("_id displayName ign")
+    .select(`_id displayName ign ${fields.matchesPlayed} ${fields.wins}`)
     .maxTimeMS(8_000)
     .lean();
-  const userById = new Map(users.map((user) => [String(user._id), user]));
   await SeasonPlayerStatModel.deleteMany({ seasonId }).exec();
-  if (seasonStats.length) {
+  const rankedUsers = users.filter(
+    (user) => Number(user[fields.matchesPlayed]) >= 1,
+  );
+  if (rankedUsers.length) {
     await SeasonPlayerStatModel.insertMany(
-      seasonStats.map((stat) => {
-        const user = userById.get(String(stat._id));
-        const displayName = user?.displayName ?? "Player";
+      rankedUsers.map((user) => {
+        const displayName = user.displayName ?? "Player";
         return {
-          _id: getSeasonPlayerStatId(String(seasonId), String(stat._id)),
-          userId: stat._id,
+          _id: getSeasonPlayerStatId(String(seasonId), String(user._id)),
+          userId: user._id,
           seasonId,
-          matchesPlayed: stat.matchesPlayed,
-          wins: stat.wins,
+          matchesPlayed: Number(user[fields.matchesPlayed]) || 0,
+          wins: Number(user[fields.wins]) || 0,
           displayName,
-          ign: user?.ign?.trim() || displayName,
+          ign: user.ign?.trim() || displayName,
         };
       }),
       { ordered: false },
@@ -405,12 +409,16 @@ export async function snapshotPreviousSeasonAtMonthStart(date = new Date()) {
 
     await UserModel.updateMany(
       { role: { $ne: UserRole.PLATFORM } },
-      { $set: { matchesPlayed: "0", wins: "0" } },
+      {
+        $set: {
+          matchesPlayed: "0",
+          wins: "0",
+          [activeFields.matchesPlayed]: "0",
+          [activeFields.wins]: "0",
+        },
+      },
       { session },
     ).exec();
-    await SeasonPlayerStatModel.deleteMany({ seasonId: activeSeason._id })
-      .session(session)
-      .exec();
     const activeSeasonStats = await aggregateSeasonMatchStats(
       activeSeason._id,
       session,
@@ -424,6 +432,8 @@ export async function snapshotPreviousSeasonAtMonthStart(date = new Date()) {
               $set: {
                 matchesPlayed: String(stats.matchesPlayed),
                 wins: String(stats.wins),
+                [activeFields.matchesPlayed]: String(stats.matchesPlayed),
+                [activeFields.wins]: String(stats.wins),
               },
             },
           },

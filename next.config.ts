@@ -1,17 +1,9 @@
 import path from "path";
 import type { NextConfig } from "next";
 
-const capacitorServerUrl = process.env.CAPACITOR_SERVER_URL;
-const capacitorDevHost = capacitorServerUrl
-  ? new URL(capacitorServerUrl).hostname
-  : undefined;
-
 const nextConfig: NextConfig = {
   reactCompiler: true,
-  allowedDevOrigins: [
-    "10.63.120.238.sslip.io",
-    ...(capacitorDevHost ? [capacitorDevHost] : []),
-  ],
+  allowedDevOrigins: ["10.51.250.238.sslip.io"],
   sassOptions: {
     includePaths: [path.join(process.cwd(), "src/styles")],
   },

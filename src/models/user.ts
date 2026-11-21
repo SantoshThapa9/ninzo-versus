@@ -1,5 +1,6 @@
 import { Schema, model, models, type InferSchemaType, type Types } from "mongoose";
 import { UserRole, UserStatus } from "@/types/enums";
+import { getMonthlyRankStatFields } from "@/lib/monthly-rank-stats";
 
 const UserSchema = new Schema(
   {
@@ -65,3 +66,15 @@ if (cachedUserModel) {
 }
 
 export const UserModel = cachedUserModel || model("User", UserSchema);
+
+export function ensureMonthlyRankStatFields(date: Date) {
+  const fields = getMonthlyRankStatFields(date);
+  for (const field of [fields.matchesPlayed, fields.wins]) {
+    if (!UserModel.schema.path(field)) {
+      UserModel.schema.add({
+        [field]: { type: String, default: "0", match: /^\d+$/ },
+      });
+    }
+  }
+  return fields;
+}

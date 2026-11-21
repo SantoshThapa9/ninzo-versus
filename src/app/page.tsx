@@ -155,7 +155,7 @@ export default function HomePage() {
         <div className="flex items-center gap-2 text-[var(--accent)]">
           <Trophy size={17} />
           <p className="text-xs font-bold uppercase tracking-[0.16em]">
-            Tournament hub
+            Tournaments hub
           </p>
         </div>
         <h2 className="mt-1 text-xl font-extrabold">Tonight&apos;s events</h2>

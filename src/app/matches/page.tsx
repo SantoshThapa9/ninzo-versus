@@ -5,13 +5,7 @@ import { listMatchesForUser } from "@/services/match.service";
 import { listPublicEvents } from "@/services/event.service";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import {
-  CalendarDays,
-  ChevronRight,
-  Coins,
-  Trophy,
-  UsersRound,
-} from "lucide-react";
+import { Trophy } from "lucide-react";
 import { EventCard } from "@/components/events/EventCard";
 
 const FILTERS = [

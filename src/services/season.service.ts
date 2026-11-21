@@ -3,6 +3,9 @@ import { unstable_cache } from "next/cache";
 import { Types } from "mongoose";
 import { SeasonModel, type SeasonDoc } from "@/models/season";
 
+const MONTHLY_SEASON_SLUG =
+  /^(january|february|march|april|may|june|july|august|september|october|november|december)-\d{4}$/;
+
 function getMonthDates(date: Date) {
   const startDate = new Date(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1),
@@ -92,7 +95,7 @@ const getCachedSeasons = unstable_cache(
       .sort({ startDate: -1 })
       .maxTimeMS(5_000)
       .lean();
-    return seasons.map((season) => ({
+    return seasons.filter((season) => MONTHLY_SEASON_SLUG.test(season.slug)).map((season) => ({
       _id: String(season._id),
       id: season.id,
       slug: season.slug,

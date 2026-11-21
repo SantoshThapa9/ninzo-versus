@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
-import { UserModel, type UserDoc } from "@/models/user";
+import {
+  ensureMonthlyRankStatFields,
+  UserModel,
+  type UserDoc,
+} from "@/models/user";
 import { UserRole } from "@/types/enums";
 import { SeasonModel } from "@/models/season";
 
@@ -82,13 +86,17 @@ export const userRepository = {
     }
 
     // A match in an archived month cannot update the active monthly counters.
-    const activeSeason = await SeasonModel.exists({
+    const activeSeason = await SeasonModel.findOne({
       _id: seasonId,
       status: "active",
       rankingsSnapshottedAt: { $exists: false },
       rankingsSnapshotStartedAt: { $exists: false },
-    }).session(session);
+    })
+      .select("startDate")
+      .session(session)
+      .lean();
     if (!activeSeason) return;
+    const fields = ensureMonthlyRankStatFields(activeSeason.startDate);
 
     // This is called exclusively from the settlement transaction. The match's
     // SETTLED transition and both player counter writes therefore commit or roll back
@@ -101,8 +109,14 @@ export const userRepository = {
             {
               $set: {
                 matchesPlayed: incrementNumericString("matchesPlayed"),
+                [fields.matchesPlayed]: incrementNumericString(
+                  fields.matchesPlayed,
+                ),
                 ...(userId === winnerId
-                  ? { wins: incrementNumericString("wins") }
+                  ? {
+                      wins: incrementNumericString("wins"),
+                      [fields.wins]: incrementNumericString(fields.wins),
+                    }
                   : {}),
               },
             },

@@ -8,9 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { getPlayerRank } from "@/services/rank.service";
-import { getRank } from "@/lib/rank";
-import Image from "next/image";
 import Link from "next/link";
 import { NotificationToggle } from "@/components/profile/notification-toggle";
 
@@ -18,13 +15,12 @@ export default async function ProfilePage() {
   const session = await auth();
   await connectDb();
   const userId = session?.user?.id;
-  const [user, profile, playerRank] = userId
+  const [user, profile] = userId
     ? await Promise.all([
         userRepository.findByIdLean(userId),
         playerProfileRepository.findByUserId(userId),
-        getPlayerRank(userId),
       ])
-    : [null, null, null];
+    : [null, null];
 
   // The user document is the source shown in the profile form. The legacy
   // PlayerProfile values remain as a fallback for accounts not yet backfilled.
@@ -94,7 +90,7 @@ export default async function ProfilePage() {
                 />
               </div>
             </div>
-            <Button asChild size="full">
+            <Button asChild size="full" className="mt-4">
               <Link href="/login?callbackUrl=/profile">
                 Sign in to save profile
               </Link>
@@ -103,46 +99,6 @@ export default async function ProfilePage() {
         )}
         {userId ? <NotificationToggle /> : null}
       </Card>
-      {/* {playerRank
-        ? (() => {
-            const rank = getRank(playerRank.rankScore);
-            return (
-              <Card className="border-[var(--accent)]/25 p-3">
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <p className="text-[12px] font-bold uppercase leading-tight text-[var(--muted)]">
-                      Current season rank
-                    </p>
-
-                    <p
-                      className={`mt-2 flex items-center gap-1.5 text-lg font-extrabold ${rank.className}`}
-                    >
-                      <Image
-                        src={rank.image}
-                        alt=""
-                        width={24}
-                        height={24}
-                        className="size-6 shrink-0 object-contain"
-                      />
-                      {playerRank.rank}
-                    </p>
-                  </div>
-
-                  <div className="shrink-0 text-right">
-                    <p className="text-xl font-extrabold leading-tight mb-1">
-                      {playerRank.rankScore}
-                    </p>
-
-                    <p className="text-[11px] leading-tight text-[var(--muted)]">
-                      Rank Score · {playerRank.wins}W / {playerRank.losses}L
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            );
-          })()
-        : null} */}
-
       {userId ? (
         <form action={logoutAction}>
           <Button type="submit" variant="secondary" size="full">

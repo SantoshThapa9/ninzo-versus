@@ -19,7 +19,6 @@
 
 # production
 /build
-/android/app/src/main/assets/capacitor.config.json
 
 # misc
 .DS_Store
